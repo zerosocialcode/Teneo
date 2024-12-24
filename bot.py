@@ -329,30 +329,22 @@ class Teneo:
             )
             self.log(f"{Fore.CYAN + Style.BRIGHT}-{Style.RESET_ALL}"*75)
 
-            last_proxy_update = None
-            proxy_update_interval = 1800
-
             if use_proxy and use_proxy_choice == 1:
                 await self.load_auto_proxies()
-                last_proxy_update = datetime.now()
             elif use_proxy and use_proxy_choice == 2:
                 await self.load_manual_proxy()
-
             
-            if use_proxy and use_proxy_choice == 1:
-                if not last_proxy_update or (datetime.now() - last_proxy_update).total_seconds() > proxy_update_interval:
-                    await self.load_auto_proxies()
-                    last_proxy_update = datetime.now()
-            
-            tasks = []
-            for account in accounts:
-                email = account.get('Email')
-                password = account.get('Password')
+            while True:
+                tasks = []
+                for account in accounts:
+                    email = account.get('Email')
+                    password = account.get('Password')
 
-                if email and password:
-                    tasks.append(self.process_accounts(email, password, use_proxy))
+                    if email and password:
+                        tasks.append(self.process_accounts(email, password, use_proxy))
 
-            await asyncio.gather(*tasks)
+                await asyncio.gather(*tasks)
+                await asyncio.sleep(5)
 
         except Exception as e:
             self.log(f"{Fore.RED+Style.BRIGHT}Error: {e}{Style.RESET_ALL}")
