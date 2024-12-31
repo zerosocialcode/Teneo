@@ -14,17 +14,15 @@ wib = pytz.timezone('Asia/Jakarta')
 class Teneo:
     def __init__(self) -> None:
         self.headers = {
-            "Accept": "*/*",
+            "Accept": "application/json, text/plain, */*",
             "Accept-Language": "en-US,en;q=0.9,id;q=0.8",
-            "Apikey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlra25uZ3JneHV4Z2pocGxicGV5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjU0MzgxNTAsImV4cCI6MjA0MTAxNDE1MH0.DRAvf8nH1ojnJBc3rD_Nw6t1AV8X_g6gmY_HByG2Mag",
-            "Authorization": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlra25uZ3JneHV4Z2pocGxicGV5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3MjU0MzgxNTAsImV4cCI6MjA0MTAxNDE1MH0.DRAvf8nH1ojnJBc3rD_Nw6t1AV8X_g6gmY_HByG2Mag",
-            "Origin": "chrome-extension://emcclcoaglgcpoognfiggmhnhgabppkm",
+            "Origin": "https://dashboard.teneo.pro",
+            "Referer": "https://dashboard.teneo.pro/",
             "Sec-Fetch-Dest": "empty",
             "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "cross-site",
+            "Sec-Fetch-Site": "same-site",
             "User-Agent": FakeUserAgent().random,
-            "X-Client-Info": "supabase-js-web/2.45.4",
-            "X-Supabase-Api-Version": "2024-01-01",
+            "X-Api-Key": "OwAG3kib1ivOJG4Y0OCZ8lJETa6ypvsDtGmdhcjA"
         }
         self.proxies = []
         self.proxy_index = 0
@@ -130,8 +128,8 @@ class Teneo:
         return f"{hide_local}@{domain}"
         
     async def user_login(self, email: str, password: str, proxy=None, retries=3):
-        url = "https://node-community-api.teneo.pro/auth/v1/token?grant_type=password"
-        data = json.dumps({"email":email, "password":password, "gotrue_meta_security":{}})
+        url = "https://auth.teneo.pro/api/login"
+        data = json.dumps({"email":email, "password":password})
         headers = {
             **self.headers,
             "Content-Length": str(len(data)),
@@ -161,8 +159,8 @@ class Teneo:
                 else:
                     return None
         
-    async def connect_websocket(self, email: str, user_id: str, proxy=None, retries=60):
-        wss_url = f"wss://secure.ws.teneo.pro/websocket?userId={user_id}&version=v0.2"
+    async def connect_websocket(self, email: str, token: str, proxy=None, retries=60):
+        wss_url = f"wss://secure.ws.teneo.pro/websocket?accessToken={token}&version=v0.2"
         payload = {"type":"PING"}
         ping_count = 0
 
@@ -278,8 +276,10 @@ class Teneo:
                     f"{Fore.MAGENTA + Style.BRIGHT}]{Style.RESET_ALL}"
                 )
                 return
+
+            print(login)
             
-            user_id = login['user']['id']
+            token = login['access_token']
             self.log(
                 f"{Fore.MAGENTA + Style.BRIGHT}[ Account{Style.RESET_ALL}"
                 f"{Fore.WHITE + Style.BRIGHT} {hide_email} {Style.RESET_ALL}"
@@ -289,7 +289,7 @@ class Teneo:
             )
             await asyncio.sleep(1)
 
-            await self.connect_websocket(email, user_id)
+            await self.connect_websocket(email, token)
 
         else:
             login = None
@@ -319,7 +319,7 @@ class Teneo:
                     proxy = self.get_next_proxy()
                     continue
 
-                user_id = login['user']['id']
+                token = login['access_token']
                 self.log(
                     f"{Fore.MAGENTA + Style.BRIGHT}[ Account{Style.RESET_ALL}"
                     f"{Fore.WHITE + Style.BRIGHT} {hide_email} {Style.RESET_ALL}"
@@ -329,7 +329,7 @@ class Teneo:
                 )
                 await asyncio.sleep(1)
 
-                await self.connect_websocket(email, user_id, proxy)
+                await self.connect_websocket(email, token, proxy)
     
     async def main(self):
         try:
