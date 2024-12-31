@@ -182,7 +182,7 @@ class Teneo:
                                 )
                                 while True:
                                     try:
-                                        message = await wss.receive_json(timeout=60)
+                                        message = await wss.receive_json(timeout=120)
                                         ping_count += 1
                                         point_today = message.get("pointsToday", 0)
                                         point_total = message.get("pointsTotal", 0)
