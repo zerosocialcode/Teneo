@@ -139,7 +139,7 @@ class Teneo:
         for attempt in range(retries):
             connector = ProxyConnector.from_url(proxy) if proxy else None
             try:
-                async with ClientSession(connector=connector, timeout=ClientTimeout(total=20)) as session:
+                async with ClientSession(connector=connector, timeout=ClientTimeout(total=120)) as session:
                     async with session.post(url=url, headers=headers, data=data) as response:
                         response.raise_for_status()
                         return await response.json()
@@ -168,7 +168,7 @@ class Teneo:
             try:
                 while True:
                     connector = ProxyConnector.from_url(proxy) if proxy else None
-                    session = ClientSession(connector=connector, timeout=ClientTimeout(total=20))
+                    session = ClientSession(connector=connector, timeout=ClientTimeout(total=120))
                 
                     try:
                         async with session:
@@ -182,7 +182,7 @@ class Teneo:
                                 )
                                 while True:
                                     try:
-                                        message = await wss.receive_json(timeout=10)
+                                        message = await wss.receive_json(timeout=60)
                                         ping_count += 1
                                         point_today = message.get("pointsToday", 0)
                                         point_total = message.get("pointsTotal", 0)
