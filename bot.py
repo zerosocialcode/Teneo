@@ -194,9 +194,9 @@ class Teneo:
                                             f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
                                             f"{Fore.GREEN + Style.BRIGHT} PING {ping_count} Success {Style.RESET_ALL}"
                                             f"{Fore.MAGENTA + Style.BRIGHT}] [ Earning{Style.RESET_ALL}"
-                                            f"{Fore.WHITE + Style.BRIGHT} Today {point_today} {Style.RESET_ALL}"
+                                            f"{Fore.WHITE + Style.BRIGHT} Today {point_today} Points {Style.RESET_ALL}"
                                             f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                                            f"{Fore.WHITE + Style.BRIGHT} Total {point_total} {Style.RESET_ALL}"
+                                            f"{Fore.WHITE + Style.BRIGHT} Total {point_total} Points {Style.RESET_ALL}"
                                             f"{Fore.MAGENTA + Style.BRIGHT}]{Style.RESET_ALL}"
                                         )
 
