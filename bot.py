@@ -223,16 +223,16 @@ class Teneo:
                                                 f"{Fore.MAGENTA + Style.BRIGHT}]{Style.RESET_ALL}"
                                             )
 
-                                        for _ in range(90):
+                                        for _ in range(60):
                                             await wss.send_json({"type":"PING"})
                                             print(
                                                 f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
                                                 f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                                                f"{Fore.YELLOW + Style.BRIGHT}Wait For 15 Minutes For Next Ping.{Style.RESET_ALL}",
+                                                f"{Fore.YELLOW + Style.BRIGHT}Wait For 30 Minutes For Next Ping.{Style.RESET_ALL}",
                                                 end="\r",
                                                 flush=True
                                             )
-                                            await asyncio.sleep(10)
+                                            await asyncio.sleep(30)
 
                                     except asyncio.TimeoutError as e:
                                         self.log(
