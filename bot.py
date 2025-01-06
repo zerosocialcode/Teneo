@@ -244,7 +244,7 @@ class Teneo:
                                 f"{Fore.WHITE + Style.BRIGHT} {self.hide_email(email)} {Style.RESET_ALL}"
                                 f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
                                 f"{Fore.RED + Style.BRIGHT} Websocket Isn't Connected. {Style.RESET_ALL}"
-                                f"{Fore.YELLOW + Style.BRIGHT} Retrying With Next Proxy... {Style.RESET_ALL}"
+                                f"{Fore.YELLOW + Style.BRIGHT} Retrying... {Style.RESET_ALL}"
                                 f"{Fore.MAGENTA + Style.BRIGHT}]{Style.RESET_ALL}",
                                 end="\r",
                                 flush=True
