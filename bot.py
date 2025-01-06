@@ -212,7 +212,14 @@ class Teneo:
                                             await asyncio.sleep(10)
 
                                     except asyncio.TimeoutError:
-                                        self.log(f"{Fore.YELLOW + Style.BRIGHT}Timeout, reconnecting...{Style.RESET_ALL}")
+                                        self.log(
+                                            f"{Fore.MAGENTA + Style.BRIGHT}[ Account{Style.RESET_ALL}"
+                                            f"{Fore.WHITE + Style.BRIGHT} {self.hide_email(email)} {Style.RESET_ALL}"
+                                            f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                                            f"{Fore.RED + Style.BRIGHT} Websocket Connection Timeout. {Style.RESET_ALL}"
+                                            f"{Fore.YELLOW + Style.BRIGHT}Reconnecting...{Style.RESET_ALL}"
+                                            f"{Fore.MAGENTA + Style.BRIGHT} ]{Style.RESET_ALL}"
+                                        )
                                         break
 
                     except Exception as e:
