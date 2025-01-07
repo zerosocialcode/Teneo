@@ -222,17 +222,20 @@ class Teneo:
                                                 f"{Fore.WHITE + Style.BRIGHT} Heartbeat {result['heartbeats']} {Style.RESET_ALL}"
                                                 f"{Fore.MAGENTA + Style.BRIGHT}]{Style.RESET_ALL}"
                                             )
+                                        await asyncio.sleep(3)
 
-                                        for _ in range(60):
+                                        for _ in range(90):
                                             await wss.send_json({"type":"PING"})
                                             print(
                                                 f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
                                                 f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                                                f"{Fore.YELLOW + Style.BRIGHT}Wait For 30 Minutes For Next Ping.{Style.RESET_ALL}",
+                                                f"{Fore.YELLOW + Style.BRIGHT}Wait For 15 Minutes For Next Ping.{Style.RESET_ALL}",
                                                 end="\r",
                                                 flush=True
                                             )
-                                            await asyncio.sleep(30)
+                                            await asyncio.sleep(10)
+
+                                        await asyncio.sleep(3)
 
                                     except asyncio.TimeoutError as e:
                                         self.log(
@@ -247,31 +250,20 @@ class Teneo:
 
                     except Exception as e:
                         if attempt < retries - 1:
-                            print(
-                                f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
-                                f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                                f"{Fore.MAGENTA + Style.BRIGHT}[ Account{Style.RESET_ALL}"
-                                f"{Fore.WHITE + Style.BRIGHT} {self.hide_email(email)} {Style.RESET_ALL}"
-                                f"{Fore.RED + Style.BRIGHT}GET ERROR.{Style.RESET_ALL}"
-                                f"{Fore.YELLOW + Style.BRIGHT} Retrying... {Style.RESET_ALL}"
-                                f"{Fore.MAGENTA + Style.BRIGHT}]{Style.RESET_ALL}",
-                                end="\r",
-                                flush=True
-                            )
                             await asyncio.sleep(2)
                             continue
+                        
+                        text = 'Retrying...'
+                        if use_proxy:
+                            text = 'Retrying With Next Proxy...'
 
-                        print(
-                            f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
-                            f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
+                        self.log(
                             f"{Fore.MAGENTA + Style.BRIGHT}[ Account{Style.RESET_ALL}"
                             f"{Fore.WHITE + Style.BRIGHT} {self.hide_email(email)} {Style.RESET_ALL}"
                             f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
                             f"{Fore.RED + Style.BRIGHT} Websocket Isn't Connected. {Style.RESET_ALL}"
-                            f"{Fore.YELLOW + Style.BRIGHT} Retrying... {Style.RESET_ALL}"
-                            f"{Fore.MAGENTA + Style.BRIGHT}]{Style.RESET_ALL}",
-                            end="\r",
-                            flush=True
+                            f"{Fore.YELLOW + Style.BRIGHT}{text}{Style.RESET_ALL}"
+                            f"{Fore.MAGENTA + Style.BRIGHT} ]{Style.RESET_ALL}"
                         )
                         if use_proxy:
                             proxy = self.get_next_proxy()
@@ -355,6 +347,14 @@ class Teneo:
             )
             await asyncio.sleep(1)
 
+            print(
+                f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
+                f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
+                f"{Fore.BLUE + Style.BRIGHT}Try Connect to Websocket...{Style.RESET_ALL}",
+                end="\r",
+                flush=True
+            )
+            
             await self.connect_websocket(email, token, use_proxy, proxy)
     
     async def main(self):
