@@ -1,12 +1,13 @@
 from aiohttp import (
     ClientResponseError,
     ClientSession,
-    ClientTimeout
+    ClientTimeout,
+    WSMsgType
 )
 from aiohttp_socks import ProxyConnector
-from colorama import *
-from datetime import datetime
 from fake_useragent import FakeUserAgent
+from datetime import datetime
+from colorama import *
 import asyncio, json, os, pytz
 
 wib = pytz.timezone('Asia/Jakarta')
@@ -141,44 +142,105 @@ class Teneo:
             try:
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=120)) as session:
                     async with session.post(url=url, headers=headers, data=data) as response:
+                        if response.status == 401:
+                            return self.log(
+                                f"{Fore.CYAN + Style.BRIGHT}[ Account:{Style.RESET_ALL}"
+                                f"{Fore.WHITE + Style.BRIGHT} {self.hide_email(email)} {Style.RESET_ALL}"
+                                f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                                f"{Fore.CYAN + Style.BRIGHT} Proxy: {Style.RESET_ALL}"
+                                f"{Fore.WHITE + Style.BRIGHT}{proxy}{Style.RESET_ALL}"
+                                f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                                f"{Fore.CYAN + Style.BRIGHT}Status:{Style.RESET_ALL}"
+                                f"{Fore.RED + Style.BRIGHT} User Not Found {Style.RESET_ALL}"
+                                f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
+                            )
                         response.raise_for_status()
-                        return await response.json()
+                        result = await response.json()
+                        return result['access_token']
             except (Exception, ClientResponseError) as e:
                 if attempt < retries - 1:
-                    print(
-                        f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
-                        f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                        f"{Fore.MAGENTA + Style.BRIGHT}[ Account{Style.RESET_ALL}"
-                        f"{Fore.WHITE + Style.BRIGHT} {self.hide_email(email)} {Style.RESET_ALL}"
-                        f"{Fore.RED + Style.BRIGHT}GET ERROR.{Style.RESET_ALL}"
-                        f"{Fore.YELLOW + Style.BRIGHT} Retrying... {Style.RESET_ALL}"
-                        f"{Fore.MAGENTA + Style.BRIGHT}]{Style.RESET_ALL}",
-                        end="\r",
-                        flush=True
-                    )
-                    await asyncio.sleep(2)
-                else:
-                    return None
+                    await asyncio.sleep(3)
+                    continue
+
+                return None
+            
+    async def receive_ws_message(self, wss, email: str, proxy=None):
+        async for msg in wss:
+            try:
+                if msg.type == WSMsgType.TEXT:
+                    message = json.loads(msg.data)
+                    if message and message["message"] == "Connected successfully":
+                        today_point = message.get("pointsToday", 0)
+                        total_point = message.get("pointsTotal", 0)
+                        return self.log(
+                            f"{Fore.CYAN + Style.BRIGHT}[ Account:{Style.RESET_ALL}"
+                            f"{Fore.WHITE + Style.BRIGHT} {self.hide_email(email)} {Style.RESET_ALL}"
+                            f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                            f"{Fore.CYAN + Style.BRIGHT} Proxy: {Style.RESET_ALL}"
+                            f"{Fore.WHITE + Style.BRIGHT}{proxy}{Style.RESET_ALL}"
+                            f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                            f"{Fore.CYAN + Style.BRIGHT}Status:{Style.RESET_ALL}"
+                            f"{Fore.GREEN + Style.BRIGHT} Websocket Is Connected {Style.RESET_ALL}"
+                            f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                            f"{Fore.CYAN + Style.BRIGHT} Earning: {Style.RESET_ALL}"
+                            f"{Fore.WHITE + Style.BRIGHT}Today {today_point} PTS{Style.RESET_ALL}"
+                            f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                            f"{Fore.WHITE + Style.BRIGHT}Total {total_point} PTS{Style.RESET_ALL}"
+                            f"{Fore.CYAN + Style.BRIGHT} ]{Style.RESET_ALL}"
+                        )
+                    elif message and message["message"] == "Pulse from server":
+                        today_point = message.get("pointsToday", 0)
+                        total_point = message.get("pointsTotal", 0)
+                        heartbeat_today = message.get("heartbeats", 0)
+                        return self.log(
+                            f"{Fore.CYAN + Style.BRIGHT}[ Account:{Style.RESET_ALL}"
+                            f"{Fore.WHITE + Style.BRIGHT} {self.hide_email(email)} {Style.RESET_ALL}"
+                            f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                            f"{Fore.CYAN + Style.BRIGHT} Proxy: {Style.RESET_ALL}"
+                            f"{Fore.WHITE + Style.BRIGHT}{proxy}{Style.RESET_ALL}"
+                            f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                            f"{Fore.CYAN + Style.BRIGHT}Earning:{Style.RESET_ALL}"
+                            f"{Fore.WHITE + Style.BRIGHT} Today {today_point} PTS {Style.RESET_ALL}"
+                            f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                            f"{Fore.WHITE + Style.BRIGHT} Total {total_point} PTS {Style.RESET_ALL}"
+                            f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                            f"{Fore.CYAN + Style.BRIGHT} Heartbeat: {Style.RESET_ALL}"
+                            f"{Fore.WHITE + Style.BRIGHT}Today {heartbeat_today} HB{Style.RESET_ALL}"
+                            f"{Fore.CYAN + Style.BRIGHT} ]{Style.RESET_ALL}"
+                        )
+                    
+            except Exception as e:
+                return self.log(
+                    f"{Fore.CYAN + Style.BRIGHT}[ Account:{Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT} {self.hide_email(email)} {Style.RESET_ALL}"
+                    f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT} Proxy: {Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT}{proxy}{Style.RESET_ALL}"
+                    f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT}Status:{Style.RESET_ALL}"
+                    f"{Fore.RED + Style.BRIGHT} GET Message From Websocket Failed{Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
+                )
         
     async def connect_websocket(self, email: str, token: str, use_proxy: bool, proxy=None, retries=5):
         wss_url = f"wss://secure.ws.teneo.pro/websocket?accessToken={token}&version=v0.2"
         headers = {
-            "Host": "secure.ws.teneo.pro",
-            "Connection": "Upgrade",
-            "Pragma": "no-cache",
-            "Cache-Control": "no-cache",
-            "User-Agent": FakeUserAgent().random,
-            "Upgrade": "websocket",
-            "Origin": "chrome-extension://emcclcoaglgcpoognfiggmhnhgabppkm",
-            "Sec-WebSocket-Version": "13",
             "Accept-Language": "en-US,en;q=0.9,id;q=0.8",
-            "Sec-WebSocket-Key": "g0PDYtLWQOmaBE5upOBXew==",
+            "Cache-Control": "no-cache",
+            "Connection": "Upgrade",
+            "Host": "secure.ws.teneo.pro",
+            "Origin": "chrome-extension://emcclcoaglgcpoognfiggmhnhgabppkm",
+            "Pragma": "no-cache",
             "Sec-WebSocket-Extensions": "permessage-deflate; client_max_window_bits",
+            "Sec-WebSocket-Key": "g0PDYtLWQOmaBE5upOBXew==",
+            "Sec-WebSocket-Version": "13",
+            "Upgrade": "websocket",
+            "User-Agent": FakeUserAgent().random
         }
-        ping_count = 0
+        message = {"type": "PING"}
 
-        try:
-            while True:
+        while True:
+            try:
                 connector = ProxyConnector.from_url(proxy) if proxy else None
                 session = ClientSession(connector=connector, timeout=ClientTimeout(total=120))
                 for attempt in range(retries):
@@ -187,97 +249,66 @@ class Teneo:
                             async with session.ws_connect(wss_url, headers=headers) as wss:
                                 while True:
                                     try:
-                                        result = await wss.receive_json(timeout=120)
-                                        if result and result["message"] == "Connected successfully":
-                                            self.log(
-                                                f"{Fore.MAGENTA + Style.BRIGHT}[ Account{Style.RESET_ALL}"
-                                                f"{Fore.WHITE + Style.BRIGHT} {self.hide_email(email)} {Style.RESET_ALL}"
-                                                f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                                                f"{Fore.GREEN + Style.BRIGHT} Websocket Is Connected {Style.RESET_ALL}"
-                                                f"{Fore.WHITE + Style.BRIGHT}With Proxy {proxy}{Style.RESET_ALL}"
-                                                f"{Fore.MAGENTA + Style.BRIGHT} ]{Style.RESET_ALL}"
-                                            )
-                                            self.log(
-                                                f"{Fore.MAGENTA + Style.BRIGHT}[ Account{Style.RESET_ALL}"
-                                                f"{Fore.WHITE + Style.BRIGHT} {self.hide_email(email)} {Style.RESET_ALL}"
-                                                f"{Fore.MAGENTA + Style.BRIGHT}] [ Earning{Style.RESET_ALL}"
-                                                f"{Fore.WHITE + Style.BRIGHT} Today {result['pointsToday']} Points {Style.RESET_ALL}"
-                                                f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                                                f"{Fore.WHITE + Style.BRIGHT} Total {result['pointsTotal']} Points {Style.RESET_ALL}"
-                                                f"{Fore.MAGENTA + Style.BRIGHT}]{Style.RESET_ALL}"
-                                            )
-                                            
-                                        elif result and result["message"] == "Pulse from server":
-                                            ping_count += 1
-                                            self.log(
-                                                f"{Fore.MAGENTA + Style.BRIGHT}[ Account{Style.RESET_ALL}"
-                                                f"{Fore.WHITE + Style.BRIGHT} {self.hide_email(email)} {Style.RESET_ALL}"
-                                                f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                                                f"{Fore.GREEN + Style.BRIGHT} PING {ping_count} Success {Style.RESET_ALL}"
-                                                f"{Fore.MAGENTA + Style.BRIGHT}] [ Earning{Style.RESET_ALL}"
-                                                f"{Fore.WHITE + Style.BRIGHT} Today {result['pointsToday']} Points {Style.RESET_ALL}"
-                                                f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                                                f"{Fore.WHITE + Style.BRIGHT} Total {result['pointsTotal']} Points {Style.RESET_ALL}"
-                                                f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                                                f"{Fore.WHITE + Style.BRIGHT} Heartbeat {result['heartbeats']} {Style.RESET_ALL}"
-                                                f"{Fore.MAGENTA + Style.BRIGHT}]{Style.RESET_ALL}"
-                                            )
-                                        await asyncio.sleep(3)
-
-                                        for _ in range(90):
-                                            await wss.send_json({"type":"PING"})
+                                        await self.receive_ws_message(wss, email, proxy)
+                                        for i in range(90, 0, -1):
+                                            await wss.send_json(message)
+                                            seconds = i * 10 
                                             print(
                                                 f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
                                                 f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                                                f"{Fore.YELLOW + Style.BRIGHT}Wait For 15 Minutes For Next Ping.{Style.RESET_ALL}",
+                                                f"{Fore.BLUE + Style.BRIGHT}Wait For {seconds} Seconds For Next Ping...{Style.RESET_ALL}",
                                                 end="\r",
                                                 flush=True
                                             )
                                             await asyncio.sleep(10)
-
-                                        await asyncio.sleep(3)
-
-                                    except asyncio.TimeoutError as e:
+                                    except Exception as e:
                                         self.log(
-                                            f"{Fore.MAGENTA + Style.BRIGHT}[ Account{Style.RESET_ALL}"
+                                            f"{Fore.CYAN + Style.BRIGHT}[ Account:{Style.RESET_ALL}"
                                             f"{Fore.WHITE + Style.BRIGHT} {self.hide_email(email)} {Style.RESET_ALL}"
                                             f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                                            f"{Fore.RED + Style.BRIGHT} Websocket Connection Timeout. {Style.RESET_ALL}"
-                                            f"{Fore.YELLOW + Style.BRIGHT}Reconnecting...{Style.RESET_ALL}"
-                                            f"{Fore.MAGENTA + Style.BRIGHT} ]{Style.RESET_ALL}"
+                                            f"{Fore.CYAN + Style.BRIGHT} Proxy: {Style.RESET_ALL}"
+                                            f"{Fore.WHITE + Style.BRIGHT}{proxy}{Style.RESET_ALL}"
+                                            f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                                            f"{Fore.CYAN + Style.BRIGHT}Status:{Style.RESET_ALL}"
+                                            f"{Fore.YELLOW + Style.BRIGHT} Websocket Connection Closed {Style.RESET_ALL}"
+                                            f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
                                         )
                                         break
 
                     except Exception as e:
                         if attempt < retries - 1:
-                            await asyncio.sleep(2)
+                            await asyncio.sleep(3)
                             continue
                         
-                        text = 'Retrying...'
-                        if use_proxy:
-                            text = 'Retrying With Next Proxy...'
-
                         self.log(
-                            f"{Fore.MAGENTA + Style.BRIGHT}[ Account{Style.RESET_ALL}"
+                            f"{Fore.CYAN + Style.BRIGHT}[ Account:{Style.RESET_ALL}"
                             f"{Fore.WHITE + Style.BRIGHT} {self.hide_email(email)} {Style.RESET_ALL}"
                             f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                            f"{Fore.RED + Style.BRIGHT} Websocket Isn't Connected. {Style.RESET_ALL}"
-                            f"{Fore.YELLOW + Style.BRIGHT}{text}{Style.RESET_ALL}"
-                            f"{Fore.MAGENTA + Style.BRIGHT} ]{Style.RESET_ALL}"
+                            f"{Fore.CYAN + Style.BRIGHT} Proxy: {Style.RESET_ALL}"
+                            f"{Fore.WHITE + Style.BRIGHT}{proxy}{Style.RESET_ALL}"
+                            f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                            f"{Fore.CYAN + Style.BRIGHT}Status:{Style.RESET_ALL}"
+                            f"{Fore.RED + Style.BRIGHT} Websocket Not Connected {Style.RESET_ALL}"
+                            f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
                         )
                         if use_proxy:
                             proxy = self.get_next_proxy()
 
-        except asyncio.CancelledError:
-            self.log(
-                f"{Fore.MAGENTA + Style.BRIGHT}[ Account{Style.RESET_ALL}"
-                f"{Fore.WHITE + Style.BRIGHT} {self.hide_email(email)} {Style.RESET_ALL}"
-                f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                f"{Fore.YELLOW + Style.BRIGHT} Websocket Connection Is Closed {Style.RESET_ALL}"
-                f"{Fore.MAGENTA + Style.BRIGHT}]{Style.RESET_ALL}"
-            )
-        finally:
-            await session.close()
+            except asyncio.CancelledError:
+                self.log(
+                    f"{Fore.CYAN + Style.BRIGHT}[ Account:{Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT} {self.hide_email(email)} {Style.RESET_ALL}"
+                    f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT} Proxy: {Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT}{proxy}{Style.RESET_ALL}"
+                    f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT}Status:{Style.RESET_ALL}"
+                    f"{Fore.YELLOW + Style.BRIGHT} Websocket Closed {Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
+                )
+                break
+            finally:
+                await session.close()
         
     async def question(self):
         while True:
@@ -302,23 +333,25 @@ class Teneo:
                 print(f"{Fore.RED + Style.BRIGHT}Invalid input. Enter a number (1, 2 or 3).{Style.RESET_ALL}")
         
     async def process_accounts(self, email: str, password: str, use_proxy: bool):
-        hide_email = self.hide_email(email)
         proxy = None
 
         if use_proxy:
             proxy = self.get_next_proxy()
 
-        login = None
-        while login is None:
-            login = await self.user_login(email, password, proxy)
-            if not login:
+        token = None
+        while token is None:
+            token = await self.user_login(email, password, proxy)
+            if not token:
                 self.log(
-                    f"{Fore.MAGENTA + Style.BRIGHT}[ Account{Style.RESET_ALL}"
-                    f"{Fore.WHITE + Style.BRIGHT} {hide_email} {Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT}[ Account:{Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT} {self.hide_email(email)} {Style.RESET_ALL}"
                     f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                    f"{Fore.RED + Style.BRIGHT} Login Failed {Style.RESET_ALL}"
-                    f"{Fore.WHITE + Style.BRIGHT}With Proxy {proxy}{Style.RESET_ALL}"
-                    f"{Fore.MAGENTA + Style.BRIGHT} ]{Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT} Proxy: {Style.RESET_ALL}"
+                    f"{Fore.WHITE + Style.BRIGHT}{proxy}{Style.RESET_ALL}"
+                    f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT}Status:{Style.RESET_ALL}"
+                    f"{Fore.RED + Style.BRIGHT} GET Access Token Failed {Style.RESET_ALL}"
+                    f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
                 )
                 await asyncio.sleep(1)
 
@@ -336,25 +369,6 @@ class Teneo:
                 proxy = self.get_next_proxy()
                 continue
 
-            token = login['access_token']
-            self.log(
-                f"{Fore.MAGENTA + Style.BRIGHT}[ Account{Style.RESET_ALL}"
-                f"{Fore.WHITE + Style.BRIGHT} {hide_email} {Style.RESET_ALL}"
-                f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                f"{Fore.GREEN + Style.BRIGHT} Login Success {Style.RESET_ALL}"
-                f"{Fore.WHITE + Style.BRIGHT}With Proxy {proxy}{Style.RESET_ALL}"
-                f"{Fore.MAGENTA + Style.BRIGHT} ]{Style.RESET_ALL}"
-            )
-            await asyncio.sleep(1)
-
-            print(
-                f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
-                f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                f"{Fore.BLUE + Style.BRIGHT}Try Connect to Websocket...{Style.RESET_ALL}",
-                end="\r",
-                flush=True
-            )
-            
             await self.connect_websocket(email, token, use_proxy, proxy)
     
     async def main(self):
@@ -393,7 +407,7 @@ class Teneo:
                         tasks.append(self.process_accounts(email, password, use_proxy))
 
                 await asyncio.gather(*tasks)
-                await asyncio.sleep(3)
+                await asyncio.sleep(10)
 
         except Exception as e:
             self.log(f"{Fore.RED+Style.BRIGHT}Error: {e}{Style.RESET_ALL}")
