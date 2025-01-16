@@ -193,7 +193,7 @@ class Teneo:
                             async with session.ws_connect(wss_url, headers=headers) as wss:
                                 while True:
                                     try:
-                                        response = await wss.receive_json()
+                                        response = await wss.receive_json(timeout=120)
                                         if response and response.get("message") == "Connected successfully":
                                             today_point = response.get("pointsToday", 0)
                                             total_point = response.get("pointsTotal", 0)
