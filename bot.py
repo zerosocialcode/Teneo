@@ -164,7 +164,7 @@ class Teneo:
 
                 return None
             
-    async def receive_ws_message(self, wss, email: str, proxy=None):
+    async def receive_ws_message(self, wss, email: str, ping_count: int, proxy=None):
         async for msg in wss:
             try:
                 if msg.type == WSMsgType.TEXT:
@@ -192,6 +192,7 @@ class Teneo:
                         today_point = message.get("pointsToday", 0)
                         total_point = message.get("pointsTotal", 0)
                         heartbeat_today = message.get("heartbeats", 0)
+                        ping_count += 1
                         return self.log(
                             f"{Fore.CYAN + Style.BRIGHT}[ Account:{Style.RESET_ALL}"
                             f"{Fore.WHITE + Style.BRIGHT} {self.hide_email(email)} {Style.RESET_ALL}"
@@ -199,14 +200,17 @@ class Teneo:
                             f"{Fore.CYAN + Style.BRIGHT} Proxy: {Style.RESET_ALL}"
                             f"{Fore.WHITE + Style.BRIGHT}{proxy}{Style.RESET_ALL}"
                             f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
-                            f"{Fore.CYAN + Style.BRIGHT}Earning:{Style.RESET_ALL}"
-                            f"{Fore.WHITE + Style.BRIGHT} Today {today_point} PTS {Style.RESET_ALL}"
+                            f"{Fore.CYAN + Style.BRIGHT}Status:{Style.RESET_ALL}"
+                            f"{Fore.GREEN + Style.BRIGHT} PING {ping_count} Success {Style.RESET_ALL}"
                             f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                            f"{Fore.WHITE + Style.BRIGHT} Total {total_point} PTS {Style.RESET_ALL}"
-                            f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                            f"{Fore.CYAN + Style.BRIGHT} Heartbeat: {Style.RESET_ALL}"
-                            f"{Fore.WHITE + Style.BRIGHT}Today {heartbeat_today} HB{Style.RESET_ALL}"
-                            f"{Fore.CYAN + Style.BRIGHT} ]{Style.RESET_ALL}"
+                            f"{Fore.CYAN + Style.BRIGHT} Earning: {Style.RESET_ALL}"
+                            f"{Fore.WHITE + Style.BRIGHT}Today {today_point} PTS{Style.RESET_ALL}"
+                            f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                            f"{Fore.WHITE + Style.BRIGHT}Total {total_point} PTS{Style.RESET_ALL}"
+                            f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                            f"{Fore.CYAN + Style.BRIGHT}Heartbeat:{Style.RESET_ALL}"
+                            f"{Fore.WHITE + Style.BRIGHT} Today {heartbeat_today} HB {Style.RESET_ALL}"
+                            f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
                         )
                     
             except Exception as e:
@@ -238,6 +242,7 @@ class Teneo:
             "User-Agent": FakeUserAgent().random
         }
         message = {"type": "PING"}
+        ping_count = 0
 
         while True:
             try:
@@ -249,7 +254,7 @@ class Teneo:
                             async with session.ws_connect(wss_url, headers=headers) as wss:
                                 while True:
                                     try:
-                                        await self.receive_ws_message(wss, email, proxy)
+                                        await self.receive_ws_message(wss, email, ping_count, proxy)
                                         for i in range(90, 0, -1):
                                             await wss.send_json(message)
                                             seconds = i * 10 
