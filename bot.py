@@ -179,6 +179,10 @@ class Teneo:
             "Upgrade": "websocket",
             "User-Agent": FakeUserAgent().random
         }
+        ping_count = 0
+        message = {"type":"PING"}
+        delay = random.randint(5, 10)
+
         while True:
             try:
                 connector = ProxyConnector.from_url(proxy) if proxy else None
@@ -213,6 +217,7 @@ class Teneo:
                                             today_point = response.get("pointsToday", 0)
                                             total_point = response.get("pointsTotal", 0)
                                             heartbeat_today = response.get("heartbeats", 0)
+                                            ping_count += 1
                                             self.log(
                                                 f"{Fore.CYAN + Style.BRIGHT}[ Account:{Style.RESET_ALL}"
                                                 f"{Fore.WHITE + Style.BRIGHT} {self.hide_email(email)} {Style.RESET_ALL}"
@@ -221,7 +226,7 @@ class Teneo:
                                                 f"{Fore.WHITE + Style.BRIGHT}{proxy}{Style.RESET_ALL}"
                                                 f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
                                                 f"{Fore.CYAN + Style.BRIGHT}Status:{Style.RESET_ALL}"
-                                                f"{Fore.GREEN + Style.BRIGHT} PING Success {Style.RESET_ALL}"
+                                                f"{Fore.GREEN + Style.BRIGHT} PING {ping_count} Success {Style.RESET_ALL}"
                                                 f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
                                                 f"{Fore.CYAN + Style.BRIGHT} Earning: {Style.RESET_ALL}"
                                                 f"{Fore.WHITE + Style.BRIGHT}Today {today_point} PTS{Style.RESET_ALL}"
@@ -232,10 +237,10 @@ class Teneo:
                                                 f"{Fore.WHITE + Style.BRIGHT} Today {heartbeat_today} HB {Style.RESET_ALL}"
                                                 f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
                                             )
-                                        await asyncio.sleep(random.randint(5, 10))
+                                        await asyncio.sleep(delay)
 
                                         for _ in range(90):
-                                            await wss.send_json({"type":"PING"})
+                                            await wss.send_json(message)
                                             print(
                                                 f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
                                                 f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
@@ -244,6 +249,9 @@ class Teneo:
                                                 flush=True
                                             )
                                             await asyncio.sleep(10)
+
+                                        await asyncio.sleep(delay)
+
                                     except Exception as e:
                                         self.log(
                                             f"{Fore.CYAN + Style.BRIGHT}[ Account:{Style.RESET_ALL}"
