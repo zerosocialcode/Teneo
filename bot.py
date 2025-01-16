@@ -8,7 +8,7 @@ from aiohttp_socks import ProxyConnector
 from fake_useragent import FakeUserAgent
 from datetime import datetime
 from colorama import *
-import asyncio, json, os, pytz
+import asyncio, json, random, os, pytz
 
 wib = pytz.timezone('Asia/Jakarta')
 
@@ -164,7 +164,7 @@ class Teneo:
 
                 return None
             
-    async def receive_ws_message(self, wss, email: str, ping_count: int, proxy=None):
+    async def receive_ws_message(self, wss, email: str, proxy=None):
         async for msg in wss:
             try:
                 if msg.type == WSMsgType.TEXT:
@@ -201,7 +201,7 @@ class Teneo:
                             f"{Fore.WHITE + Style.BRIGHT}{proxy}{Style.RESET_ALL}"
                             f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
                             f"{Fore.CYAN + Style.BRIGHT}Status:{Style.RESET_ALL}"
-                            f"{Fore.GREEN + Style.BRIGHT} PING {ping_count} Success {Style.RESET_ALL}"
+                            f"{Fore.GREEN + Style.BRIGHT} PING Success {Style.RESET_ALL}"
                             f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
                             f"{Fore.CYAN + Style.BRIGHT} Earning: {Style.RESET_ALL}"
                             f"{Fore.WHITE + Style.BRIGHT}Today {today_point} PTS{Style.RESET_ALL}"
@@ -212,6 +212,9 @@ class Teneo:
                             f"{Fore.WHITE + Style.BRIGHT} Today {heartbeat_today} HB {Style.RESET_ALL}"
                             f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
                         )
+                    
+                elif msg.type in [WSMsgType.CLOSED, WSMsgType.ERROR]:
+                    break
                     
             except Exception as e:
                 return self.log(
@@ -241,9 +244,6 @@ class Teneo:
             "Upgrade": "websocket",
             "User-Agent": FakeUserAgent().random
         }
-        message = {"type": "PING"}
-        ping_count = 0
-
         while True:
             try:
                 connector = ProxyConnector.from_url(proxy) if proxy else None
@@ -254,14 +254,14 @@ class Teneo:
                             async with session.ws_connect(wss_url, headers=headers) as wss:
                                 while True:
                                     try:
-                                        await self.receive_ws_message(wss, email, ping_count, proxy)
-                                        for i in range(90, 0, -1):
-                                            await wss.send_json(message)
-                                            seconds = i * 10 
+                                        await self.receive_ws_message(wss, email, proxy)
+                                        await asyncio.sleep(random.randint(5, 10))
+                                        for _ in range(90, 0, -1):
+                                            await wss.send_json({"type": "PING"})
                                             print(
                                                 f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
                                                 f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                                                f"{Fore.BLUE + Style.BRIGHT}Wait For {seconds} Seconds For Next Ping...{Style.RESET_ALL}",
+                                                f"{Fore.BLUE + Style.BRIGHT}Wait For 15 Minutes For Next Ping...{Style.RESET_ALL}",
                                                 end="\r",
                                                 flush=True
                                             )
