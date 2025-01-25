@@ -294,6 +294,7 @@ class Teneo:
         try:
             accounts = self.load_accounts()
             if not accounts:
+                self.log(f"{Fore.RED+Style.BRIGHT}No Accounts Loaded.{Style.RESET_ALL}")
                 return
             
             use_proxy_choice = self.print_question()
