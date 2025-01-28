@@ -180,7 +180,7 @@ class Teneo:
         except (Exception, ClientResponseError) as e:
             return self.print_message(email, proxy, Fore.RED, f"GET Access Token Failed: {Fore.YELLOW + Style.BRIGHT}{str(e)}")
         
-    async def connect_websocket(self, email: str, token: str, use_proxy: bool, retries=5):
+    async def connect_websocket(self, email: str, token: str, use_proxy: bool):
         wss_url = f"wss://secure.ws.teneo.pro/websocket?accessToken={token}&version=v0.2"
         headers = {
             "Accept-Language": "en-US,en;q=0.9,id;q=0.8",
@@ -193,85 +193,82 @@ class Teneo:
             "Sec-WebSocket-Key": "g0PDYtLWQOmaBE5upOBXew==",
             "Sec-WebSocket-Version": "13",
             "Upgrade": "websocket",
-            "User-Agent": FakeUserAgent().random
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36"
         }
-        ping_count = 0
-        delay = random.randint(5, 10)
 
         while True:
             proxy = self.get_next_proxy_for_account(email) if use_proxy else None
             connector = ProxyConnector.from_url(proxy) if proxy else None
-            for attempt in range(retries):
-                session = ClientSession(connector=connector, timeout=ClientTimeout(total=120))
-                try:
-                    async with session:
-                        async with session.ws_connect(wss_url, headers=headers) as wss:
+            session = ClientSession(connector=connector, timeout=ClientTimeout(total=120))
+            try:
+                async with session:
+                    async with session.ws_connect(wss_url, headers=headers) as wss:
+                        self.print_message(email, proxy, Fore.GREEN, "Websocket Connected")
+
+                        async def send_ping_message():
                             while True:
+                                await asyncio.sleep(10)
+                                await wss.send_json({"type":"PING"})
+                                print(
+                                    f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
+                                    f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
+                                    f"{Fore.BLUE + Style.BRIGHT}Node Connection Estabilished...{Style.RESET_ALL}",
+                                    end="\r",
+                                    flush=True
+                                )
+
+                        try:
+                            send_ping = asyncio.create_task(send_ping_message())
+                            async for msg in wss:
+                                response = json.loads(msg.data)
+                                if response.get("message") == "Connected successfully":
+                                    today_point = response.get("pointsToday", 0)
+                                    total_point = response.get("pointsTotal", 0)
+                                    self.print_message(
+                                        email, proxy, Fore.GREEN, 
+                                        f"Connected Successfully "
+                                        f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                                        f"{Fore.CYAN + Style.BRIGHT} Earning: {Style.RESET_ALL}"
+                                        f"{Fore.WHITE + Style.BRIGHT}Today {today_point} PTS{Style.RESET_ALL}"
+                                        f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                                        f"{Fore.WHITE + Style.BRIGHT}Total {total_point} PTS{Style.RESET_ALL}"
+                                    )
+
+                                elif response.get("message") == "Pulse from server":
+                                    today_point = response.get("pointsToday", 0)
+                                    total_point = response.get("pointsTotal", 0)
+                                    heartbeat_today = response.get("heartbeats", 0)
+                                    self.print_message(
+                                        email, proxy, Fore.GREEN, 
+                                        f"Pulse From Server"
+                                        f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                                        f"{Fore.CYAN + Style.BRIGHT}Earning:{Style.RESET_ALL}"
+                                        f"{Fore.WHITE + Style.BRIGHT} Today {today_point} PTS {Style.RESET_ALL}"
+                                        f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                                        f"{Fore.WHITE + Style.BRIGHT} Total {total_point} PTS {Style.RESET_ALL}"
+                                        f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                                        f"{Fore.CYAN + Style.BRIGHT} Heartbeat: {Style.RESET_ALL}"
+                                        f"{Fore.WHITE + Style.BRIGHT}Today {heartbeat_today} HB{Style.RESET_ALL}"
+                                    )
+
+                        except Exception as e:
+                            if send_ping:
+                                send_ping.cancel()
                                 try:
-                                    response = await wss.receive_json(timeout=120)
-                                    if response and response.get("message") == "Connected successfully":
-                                        today_point = response.get("pointsToday", 0)
-                                        total_point = response.get("pointsTotal", 0)
-                                        self.print_message(
-                                            email, proxy, Fore.GREEN, 
-                                            f"Websocket Connected "
-                                            f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                                            f"{Fore.CYAN + Style.BRIGHT} Earning: {Style.RESET_ALL}"
-                                            f"{Fore.WHITE + Style.BRIGHT}Today {today_point} PTS{Style.RESET_ALL}"
-                                            f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
-                                            f"{Fore.WHITE + Style.BRIGHT}Total {total_point} PTS{Style.RESET_ALL}"
-                                        )
-
-                                    elif response and response.get("message") == "Pulse from server":
-                                        today_point = response.get("pointsToday", 0)
-                                        total_point = response.get("pointsTotal", 0)
-                                        heartbeat_today = response.get("heartbeats", 0)
-                                        ping_count += 1
-                                        self.print_message(
-                                            email, proxy, Fore.GREEN, 
-                                            f"PING {ping_count} Success "
-                                            f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                                            f"{Fore.CYAN + Style.BRIGHT} Earning: {Style.RESET_ALL}"
-                                            f"{Fore.WHITE + Style.BRIGHT}Today {today_point} PTS{Style.RESET_ALL}"
-                                            f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
-                                            f"{Fore.WHITE + Style.BRIGHT}Total {total_point} PTS{Style.RESET_ALL}"
-                                            f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
-                                            f"{Fore.CYAN + Style.BRIGHT}Heartbeat:{Style.RESET_ALL}"
-                                            f"{Fore.WHITE + Style.BRIGHT} Today {heartbeat_today} HB{Style.RESET_ALL}"
-                                        )
-                                    await asyncio.sleep(delay)
-
-                                    for _ in range(90):
-                                        await wss.send_json({"type":"PING"})
-                                        print(
-                                            f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
-                                            f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                                            f"{Fore.BLUE + Style.BRIGHT}Wait For 15 Minutes For Next Ping...{Style.RESET_ALL}",
-                                            end="\r",
-                                            flush=True
-                                        )
-                                        await asyncio.sleep(10)
-
-                                    await asyncio.sleep(delay)
-
-                                except Exception as e:
+                                    await send_ping
+                                except asyncio.CancelledError:
                                     self.print_message(email, proxy, Fore.YELLOW, f"Websocket Connection Closed")
-                                    break
 
-                except Exception as e:
-                    if attempt < retries - 1:
-                        await asyncio.sleep(5)
-                        continue
-                    
-                    self.print_message(email, proxy, Fore.RED, f"Websocket Not Connected: {Fore.YELLOW + Style.BRIGHT}{str(e)}")
-                    
-                    proxy = self.rotate_proxy_for_account(email) if use_proxy else None
+            except Exception as e:
+                self.print_message(email, proxy, Fore.RED, f"Websocket Not Connected: {Fore.YELLOW + Style.BRIGHT}{str(e)}")
+                self.rotate_proxy_for_account(email) if use_proxy else None
+                await asyncio.sleep(5)
 
-                except asyncio.CancelledError:
-                    self.print_message(email, proxy, Fore.YELLOW, "Websocket Closed")
-                    break
-                finally:
-                    await session.close()
+            except asyncio.CancelledError:
+                self.print_message(email, proxy, Fore.YELLOW, "Websocket Closed")
+                break
+            finally:
+                await session.close()
             
     async def get_access_token(self, email: str, password: str, use_proxy: bool):
         proxy = self.get_next_proxy_for_account(email) if use_proxy else None
@@ -280,6 +277,7 @@ class Teneo:
             token = await self.user_login(email, password, proxy)
             if not token:
                 proxy = self.rotate_proxy_for_account(email) if use_proxy else None
+                await asyncio.sleep(5)
                 continue
             
             self.print_message(email, proxy, Fore.GREEN, "GET Access Token Success")
