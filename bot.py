@@ -252,12 +252,13 @@ class Teneo:
                                     )
 
                         except Exception as e:
+                            self.print_message(email, proxy, Fore.RED, f"Websocket Connection Closed: {Fore.YELLOW + Style.BRIGHT}{str(e)}")
                             if send_ping:
                                 send_ping.cancel()
                                 try:
                                     await send_ping
                                 except asyncio.CancelledError:
-                                    self.print_message(email, proxy, Fore.YELLOW, f"Websocket Connection Closed")
+                                    self.print_message(email, proxy, Fore.YELLOW, f"Send Ping Cancelled")
 
             except Exception as e:
                 self.print_message(email, proxy, Fore.RED, f"Websocket Not Connected: {Fore.YELLOW + Style.BRIGHT}{str(e)}")
