@@ -195,6 +195,7 @@ class Teneo:
             "Upgrade": "websocket",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36"
         }
+        send_ping = None
 
         while True:
             proxy = self.get_next_proxy_for_account(email) if use_proxy else None
@@ -217,9 +218,11 @@ class Teneo:
                                     flush=True
                                 )
 
-                        try:
+                        if send_ping is None or send_ping.done():
                             send_ping = asyncio.create_task(send_ping_message())
-                            async for msg in wss:
+
+                        async for msg in wss:
+                            try:
                                 response = json.loads(msg.data)
                                 if response.get("message") == "Connected successfully":
                                     today_point = response.get("pointsToday", 0)
@@ -251,14 +254,16 @@ class Teneo:
                                         f"{Fore.WHITE + Style.BRIGHT}Today {heartbeat_today} HB{Style.RESET_ALL}"
                                     )
 
-                        except Exception as e:
-                            self.print_message(email, proxy, Fore.RED, f"Websocket Connection Closed: {Fore.YELLOW + Style.BRIGHT}{str(e)}")
-                            if send_ping:
-                                send_ping.cancel()
-                                try:
-                                    await send_ping
-                                except asyncio.CancelledError:
-                                    self.print_message(email, proxy, Fore.YELLOW, f"Send Ping Cancelled")
+                            except Exception as e:
+                                self.print_message(email, proxy, Fore.RED, f"Websocket Connection Closed: {Fore.YELLOW + Style.BRIGHT}{str(e)}")
+                                if send_ping and not send_ping.done():
+                                    send_ping.cancel()
+                                    try:
+                                        await send_ping
+                                    except asyncio.CancelledError:
+                                        self.print_message(email, proxy, Fore.YELLOW, f"Send Ping Cancelled")
+
+                                break
 
             except Exception as e:
                 self.print_message(email, proxy, Fore.RED, f"Websocket Not Connected: {Fore.YELLOW + Style.BRIGHT}{str(e)}")
