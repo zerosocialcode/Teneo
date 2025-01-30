@@ -200,15 +200,14 @@ class Teneo:
         while True:
             proxy = self.get_next_proxy_for_account(email) if use_proxy else None
             connector = ProxyConnector.from_url(proxy) if proxy else None
-            session = ClientSession(connector=connector, timeout=ClientTimeout(total=120))
+            session = ClientSession(connector=connector, timeout=ClientTimeout(total=300))
             try:
                 async with session:
                     async with session.ws_connect(wss_url, headers=headers) as wss:
-                        self.print_message(email, proxy, Fore.GREEN, "Websocket Connected")
+                        self.print_message(email, proxy, Fore.GREEN, "Websocket Is Connected")
 
                         async def send_ping_message():
                             while True:
-                                await asyncio.sleep(10)
                                 await wss.send_json({"type":"PING"})
                                 print(
                                     f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
@@ -217,6 +216,7 @@ class Teneo:
                                     end="\r",
                                     flush=True
                                 )
+                                await asyncio.sleep(10)
 
                         if send_ping is None or send_ping.done():
                             send_ping = asyncio.create_task(send_ping_message())
@@ -253,6 +253,8 @@ class Teneo:
                                         f"{Fore.CYAN + Style.BRIGHT} Heartbeat: {Style.RESET_ALL}"
                                         f"{Fore.WHITE + Style.BRIGHT}Today {heartbeat_today} HB{Style.RESET_ALL}"
                                     )
+                                else:
+                                    raise Exception("Timed Out While Receive Message")
 
                             except Exception as e:
                                 self.print_message(email, proxy, Fore.RED, f"Websocket Connection Closed: {Fore.YELLOW + Style.BRIGHT}{str(e)}")
