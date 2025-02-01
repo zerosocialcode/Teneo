@@ -11,6 +11,8 @@ Teneo Community Node BOT
   - Auto Run With [Monosans](https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/all.txt) Proxy - Choose 1
   - Auto Run With Private Proxy - Choose 2
   - Auto Run Without Proxy - Choose 3
+  - Auto Claim Refferal Reward
+  - Auto Claim Refferal & Heartbeat Campaigns Reward
   - Auto Connect and Reconnect Websocket
   - Auto Receive Message Every 15 Minutes
   - Multi Accounts With Threads
