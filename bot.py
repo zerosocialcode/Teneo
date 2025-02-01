@@ -21,9 +21,9 @@ class Teneo:
             "Sec-Fetch-Dest": "empty",
             "Sec-Fetch-Mode": "cors",
             "Sec-Fetch-Site": "same-site",
-            "User-Agent": FakeUserAgent().random,
-            "X-Api-Key": "OwAG3kib1ivOJG4Y0OCZ8lJETa6ypvsDtGmdhcjB"
+            "User-Agent": FakeUserAgent().random
         }
+        self.api_key = "OwAG3kib1ivOJG4Y0OCZ8lJETa6ypvsDtGmdhcjB"
         self.proxies = []
         self.proxy_index = 0
         self.account_proxies = {}
@@ -168,7 +168,8 @@ class Teneo:
         headers = {
             **self.headers,
             "Content-Length": str(len(data)),
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "X-Api-Key": self.api_key
         }
         connector = ProxyConnector.from_url(proxy) if proxy else None
         try:
@@ -179,6 +180,95 @@ class Teneo:
                     return result['access_token']
         except (Exception, ClientResponseError) as e:
             return self.print_message(email, proxy, Fore.RED, f"GET Access Token Failed: {Fore.YELLOW + Style.BRIGHT}{str(e)}")
+    
+    async def campaigns_status(self, email: str, token: str, type: str, proxy=None, retries=5):
+        url = f"https://api.teneo.pro/api/campaigns/{type}/status"
+        headers = {
+            **self.headers,
+            "Authorization": f"Bearer {token}"
+        }
+        await asyncio.sleep(3)
+        for attempt in range(retries):
+            connector = ProxyConnector.from_url(proxy) if proxy else None
+            try:
+                async with ClientSession(connector=connector, timeout=ClientTimeout(total=120)) as session:
+                    async with session.get(url=url, headers=headers) as response:
+                        response.raise_for_status()
+                        return await response.json()
+            except (Exception, ClientResponseError) as e:
+                if attempt < retries - 1:
+                    await asyncio.sleep(5)
+                    continue
+
+                return self.print_message(email, proxy, Fore.RED, f"GET {type} Campaigns Data Failed: {Fore.YELLOW + Style.BRIGHT}{str(e)}")
+    
+    async def claim_campaigns(self, email: str, token: str, type: str, title: str, campaign_id: str, proxy=None, retries=5):
+        url = f"https://api.teneo.pro/api/campaigns/{campaign_id}/claim"
+        headers = {
+            **self.headers,
+            "Authorization": f"Bearer {token}",
+            "Content-Length": "0"
+        }
+        await asyncio.sleep(3)
+        for attempt in range(retries):
+            connector = ProxyConnector.from_url(proxy) if proxy else None
+            try:
+                async with ClientSession(connector=connector, timeout=ClientTimeout(total=120)) as session:
+                    async with session.post(url=url, headers=headers) as response:
+                        response.raise_for_status()
+                        return await response.json()
+            except (Exception, ClientResponseError) as e:
+                if attempt < retries - 1:
+                    await asyncio.sleep(5)
+                    continue
+
+                return self.print_message(email, proxy, Fore.RED, f"Claim {title} {type} Campaigns Reward Failed: {Fore.YELLOW + Style.BRIGHT}{str(e)}")
+    
+    async def user_refferal(self, email: str, token: str, proxy=None, retries=5):
+        url = "https://api.teneo.pro/api/users/referrals"
+        headers = {
+            **self.headers,
+            "Authorization": f"Bearer {token}"
+        }
+        await asyncio.sleep(3)
+        for attempt in range(retries):
+            connector = ProxyConnector.from_url(proxy) if proxy else None
+            try:
+                async with ClientSession(connector=connector, timeout=ClientTimeout(total=120)) as session:
+                    async with session.get(url=url, headers=headers) as response:
+                        response.raise_for_status()
+                        result = await response.json()
+                        return result['referrals']
+            except (Exception, ClientResponseError) as e:
+                if attempt < retries - 1:
+                    await asyncio.sleep(5)
+                    continue
+
+                return self.print_message(email, proxy, Fore.RED, f"GET Refferal Data Failed: {Fore.YELLOW + Style.BRIGHT}{str(e)}")
+    
+    async def claim_refferal(self, email: str, token: str, refferal_email: str, referral_id: str, proxy=None, retries=5):
+        url = "https://api.teneo.pro/api/users/referrals/claim"
+        data = json.dumps({"referralId":referral_id})
+        headers = {
+            **self.headers,
+            "Authorization": f"Bearer {token}",
+            "Content-Length": str(len(data)),
+            "Content-Type": "application/json"
+        }
+        await asyncio.sleep(3)
+        for attempt in range(retries):
+            connector = ProxyConnector.from_url(proxy) if proxy else None
+            try:
+                async with ClientSession(connector=connector, timeout=ClientTimeout(total=120)) as session:
+                    async with session.post(url=url, headers=headers, data=data) as response:
+                        response.raise_for_status()
+                        return await response.json()
+            except (Exception, ClientResponseError) as e:
+                if attempt < retries - 1:
+                    await asyncio.sleep(5)
+                    continue
+
+                return self.print_message(email, proxy, Fore.RED, f"Claim Refferal {refferal_email} Reward Failed: {Fore.YELLOW + Style.BRIGHT}{str(e)}")
         
     async def connect_websocket(self, email: str, token: str, use_proxy: bool):
         wss_url = f"wss://secure.ws.teneo.pro/websocket?accessToken={token}&version=v0.2"
@@ -195,77 +285,77 @@ class Teneo:
             "Upgrade": "websocket",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36"
         }
-        send_ping = None
+        connected = False
 
         while True:
             proxy = self.get_next_proxy_for_account(email) if use_proxy else None
             connector = ProxyConnector.from_url(proxy) if proxy else None
             session = ClientSession(connector=connector, timeout=ClientTimeout(total=300))
             try:
-                async with session:
-                    async with session.ws_connect(wss_url, headers=headers) as wss:
+                async with session.ws_connect(wss_url, headers=headers) as wss:
+                    
+                    async def send_heartbeat_message():
+                        while True:
+                            await asyncio.sleep(10)
+                            await wss.send_json({"type":"PING"})
+                            print(
+                                f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
+                                f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
+                                f"{Fore.BLUE + Style.BRIGHT}Node Connection Estabilished...{Style.RESET_ALL}",
+                                end="\r",
+                                flush=True
+                            )
+
+                    if not connected:
                         self.print_message(email, proxy, Fore.GREEN, "Websocket Is Connected")
+                        connected = True
+                        send_ping = asyncio.create_task(send_heartbeat_message())
 
-                        async def send_ping_message():
-                            while True:
-                                await wss.send_json({"type":"PING"})
-                                print(
-                                    f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
-                                    f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                                    f"{Fore.BLUE + Style.BRIGHT}Node Connection Estabilished...{Style.RESET_ALL}",
-                                    end="\r",
-                                    flush=True
+                    while connected:
+                        try:
+                            response = await wss.receive_json()
+                            if response.get("message") == "Connected successfully":
+                                today_point = response.get("pointsToday", 0)
+                                total_point = response.get("pointsTotal", 0)
+                                self.print_message(
+                                    email, proxy, Fore.GREEN, 
+                                    f"Connected Successfully "
+                                    f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                                    f"{Fore.CYAN + Style.BRIGHT} Earning: {Style.RESET_ALL}"
+                                    f"{Fore.WHITE + Style.BRIGHT}Today {today_point} PTS{Style.RESET_ALL}"
+                                    f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                                    f"{Fore.WHITE + Style.BRIGHT}Total {total_point} PTS{Style.RESET_ALL}"
                                 )
-                                await asyncio.sleep(10)
 
-                        if send_ping is None or send_ping.done():
-                            send_ping = asyncio.create_task(send_ping_message())
+                            elif response.get("message") == "Pulse from server":
+                                today_point = response.get("pointsToday", 0)
+                                total_point = response.get("pointsTotal", 0)
+                                heartbeat_today = response.get("heartbeats", 0)
+                                self.print_message(
+                                    email, proxy, Fore.GREEN, 
+                                    f"Pulse From Server"
+                                    f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                                    f"{Fore.CYAN + Style.BRIGHT}Earning:{Style.RESET_ALL}"
+                                    f"{Fore.WHITE + Style.BRIGHT} Today {today_point} PTS {Style.RESET_ALL}"
+                                    f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                                    f"{Fore.WHITE + Style.BRIGHT} Total {total_point} PTS {Style.RESET_ALL}"
+                                    f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
+                                    f"{Fore.CYAN + Style.BRIGHT} Heartbeat: {Style.RESET_ALL}"
+                                    f"{Fore.WHITE + Style.BRIGHT}Today {heartbeat_today} HB{Style.RESET_ALL}"
+                                )
 
-                        async for msg in wss:
-                            try:
-                                response = json.loads(msg.data)
-                                if response.get("message") == "Connected successfully":
-                                    today_point = response.get("pointsToday", 0)
-                                    total_point = response.get("pointsTotal", 0)
-                                    self.print_message(
-                                        email, proxy, Fore.GREEN, 
-                                        f"Connected Successfully "
-                                        f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                                        f"{Fore.CYAN + Style.BRIGHT} Earning: {Style.RESET_ALL}"
-                                        f"{Fore.WHITE + Style.BRIGHT}Today {today_point} PTS{Style.RESET_ALL}"
-                                        f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
-                                        f"{Fore.WHITE + Style.BRIGHT}Total {total_point} PTS{Style.RESET_ALL}"
-                                    )
+                        except Exception as e:
+                            self.print_message(email, proxy, Fore.YELLOW, f"Websocket Connection Closed: {Fore.RED + Style.BRIGHT}{str(e)}")
+                            if send_ping:
+                                send_ping.cancel()
+                                try:
+                                    await send_ping
+                                except asyncio.CancelledError:
+                                    self.print_message(email, proxy, Fore.YELLOW, f"Send Heartbeat Cancelled")
 
-                                elif response.get("message") == "Pulse from server":
-                                    today_point = response.get("pointsToday", 0)
-                                    total_point = response.get("pointsTotal", 0)
-                                    heartbeat_today = response.get("heartbeats", 0)
-                                    self.print_message(
-                                        email, proxy, Fore.GREEN, 
-                                        f"Pulse From Server"
-                                        f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
-                                        f"{Fore.CYAN + Style.BRIGHT}Earning:{Style.RESET_ALL}"
-                                        f"{Fore.WHITE + Style.BRIGHT} Today {today_point} PTS {Style.RESET_ALL}"
-                                        f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                                        f"{Fore.WHITE + Style.BRIGHT} Total {total_point} PTS {Style.RESET_ALL}"
-                                        f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                                        f"{Fore.CYAN + Style.BRIGHT} Heartbeat: {Style.RESET_ALL}"
-                                        f"{Fore.WHITE + Style.BRIGHT}Today {heartbeat_today} HB{Style.RESET_ALL}"
-                                    )
-                                else:
-                                    raise Exception("Timed Out While Receive Message")
-
-                            except Exception as e:
-                                self.print_message(email, proxy, Fore.RED, f"Websocket Connection Closed: {Fore.YELLOW + Style.BRIGHT}{str(e)}")
-                                if send_ping and not send_ping.done():
-                                    send_ping.cancel()
-                                    try:
-                                        await send_ping
-                                    except asyncio.CancelledError:
-                                        self.print_message(email, proxy, Fore.YELLOW, f"Send Ping Cancelled")
-
-                                break
+                            await asyncio.sleep(5)
+                            connected = False
+                            break
 
             except Exception as e:
                 self.print_message(email, proxy, Fore.RED, f"Websocket Not Connected: {Fore.YELLOW + Style.BRIGHT}{str(e)}")
@@ -277,6 +367,77 @@ class Teneo:
                 break
             finally:
                 await session.close()
+
+    async def process_claim_campaigns_reward(self, email: str, token: str, use_proxy: bool):
+        while True:
+            proxy = self.get_next_proxy_for_account(email) if use_proxy else None
+
+            campaigns_type = ["heartbeat", "referral"]
+            for type in campaigns_type:
+                campaigns = await self.campaigns_status(email, token, type, proxy)
+
+                if campaigns:
+                    completed = False
+                    
+                    for campaign in campaigns:
+                        if campaign:
+                            campaign_id = campaign["id"]
+                            title = campaign["title"]
+                            reward = campaign["points_reward"]
+                            status = campaign["status"]
+
+                            if status == "claimable":
+                                claim = await self.claim_campaigns(email, token, type, title, campaign_id, proxy)
+                                if claim and claim.get("message") == "Reward claimed":
+                                    self.print_message(email, proxy, Fore.WHITE, 
+                                        f"Campaign {type} {title}"
+                                        f"{Fore.GREEN+Style.BRIGHT} Is Claimed {Style.RESET_ALL}"
+                                        f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
+                                        f"{Fore.CYAN+Style.BRIGHT} Reward: {Style.RESET_ALL}"
+                                        f"{Fore.WHITE+Style.BRIGHT}{reward} PTS{Style.RESET_ALL}"
+                                    )
+
+                        else:
+                            completed = True
+
+                    if completed:
+                        self.print_message(email, proxy, Fore.GREEN, f"All Available {type} Campaigns Reward Is Claimed")
+
+            await asyncio.sleep(24 * 60 * 60)
+
+    async def process_claim_refferal_reward(self, email: str, token: str, use_proxy: bool):
+        while True:
+            proxy = self.get_next_proxy_for_account(email) if use_proxy else None
+
+            refferal_lists = await self.user_refferal(email, token, proxy)
+            if refferal_lists:
+                completed = False
+                
+                for refferal in refferal_lists:
+                    if refferal:
+                        refferal_id = refferal["id"]
+                        refferal_email = refferal["inviteeEmail"]
+                        reward = refferal["invitedPoints"]
+                        can_claim = refferal["canClaim"]
+
+                        if can_claim:
+                            claim = await self.claim_refferal(email, token, refferal_email, refferal_id, proxy)
+                            if claim and claim.get("message") == "Referral point claimed successfully":
+                                self.print_message(email, proxy, Fore.WHITE, 
+                                    f"Refferal {refferal_email}"
+                                    f"{Fore.GREEN+Style.BRIGHT} Is Claimed {Style.RESET_ALL}"
+                                    f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
+                                    f"{Fore.CYAN+Style.BRIGHT} Reward: {Style.RESET_ALL}"
+                                    f"{Fore.WHITE+Style.BRIGHT}{reward} PTS{Style.RESET_ALL}"
+                                )
+
+                    else:
+                        completed = True
+
+                if completed:
+                    self.print_message(email, proxy, Fore.GREEN, f"All Available Refferal Reward Is Claimed")
+
+            await asyncio.sleep(24 * 60 * 60)
             
     async def get_access_token(self, email: str, password: str, use_proxy: bool):
         proxy = self.get_next_proxy_for_account(email) if use_proxy else None
@@ -294,7 +455,12 @@ class Teneo:
     async def process_accounts(self, email: str, password: str, use_proxy: bool):
         token = await self.get_access_token(email, password, use_proxy)
         if token:
-            await self.connect_websocket(email, token, use_proxy)
+
+            tasks = []
+            tasks.append(self.process_claim_campaigns_reward(email, token, use_proxy))
+            tasks.append(self.process_claim_refferal_reward(email, token, use_proxy))
+            tasks.append(self.connect_websocket(email, token, use_proxy))
+            await asyncio.gather(*tasks)
         
     async def main(self):
         try:
