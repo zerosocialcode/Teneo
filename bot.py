@@ -238,8 +238,7 @@ class Teneo:
                 async with ClientSession(connector=connector, timeout=ClientTimeout(total=120)) as session:
                     async with session.get(url=url, headers=headers) as response:
                         response.raise_for_status()
-                        result = await response.json()
-                        return result['referrals']
+                        return await response.json()
             except (Exception, ClientResponseError) as e:
                 if attempt < retries - 1:
                     await asyncio.sleep(5)
@@ -413,8 +412,11 @@ class Teneo:
             refferal_lists = await self.user_refferal(email, token, proxy)
             if refferal_lists:
                 completed = False
+
+                unfiltered_refferals = refferal_lists.get("unfiltered", {}).get("refferals", [])
+                filtered_refferals = refferal_lists.get("filtered", {}).get("refferals", [])
                 
-                for refferal in refferal_lists:
+                for refferal in [unfiltered_refferals, filtered_refferals]:
                     if refferal:
                         refferal_id = refferal["id"]
                         refferal_email = refferal["inviteeEmail"]
@@ -458,9 +460,9 @@ class Teneo:
         if email:
 
             tasks = []
-            tasks.append(self.process_claim_campaigns_reward(email, token, use_proxy))
-            tasks.append(self.process_claim_refferal_reward(email, token, use_proxy))
-            tasks.append(self.connect_websocket(email, token, use_proxy))
+            tasks.append(asyncio.create_task(self.process_claim_campaigns_reward(email, token, use_proxy)))
+            tasks.append(asyncio.create_task(self.process_claim_refferal_reward(email, token, use_proxy)))
+            tasks.append(asyncio.create_task(self.connect_websocket(email, token, use_proxy)))
             await asyncio.gather(*tasks)
         
     async def main(self):
@@ -490,7 +492,7 @@ class Teneo:
                 tasks = []
                 for token in tokens:
                     if token:
-                        tasks.append(self.process_accounts(token, use_proxy))
+                        tasks.append(asyncio.create_task(self.process_accounts(token, use_proxy)))
 
                 await asyncio.gather(*tasks)
                 await asyncio.sleep(10)
