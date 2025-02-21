@@ -127,11 +127,14 @@ class Teneo:
             local, domain = account.split('@', 1)
             mask_account = local[:3] + '*' * 3 + local[-3:]
             return f"{mask_account}@{domain}"
+        
+        mask_account = account[:3] + '*' * 3 + account[-3:]
+        return mask_account
 
-    def print_message(self, email, proxy, color, message):
+    def print_message(self, account, proxy, color, message):
         self.log(
             f"{Fore.CYAN + Style.BRIGHT}[ Account:{Style.RESET_ALL}"
-            f"{Fore.WHITE + Style.BRIGHT} {self.mask_account(email)} {Style.RESET_ALL}"
+            f"{Fore.WHITE + Style.BRIGHT} {self.mask_account(account)} {Style.RESET_ALL}"
             f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
             f"{Fore.CYAN + Style.BRIGHT} Proxy: {Style.RESET_ALL}"
             f"{Fore.WHITE + Style.BRIGHT}{proxy}{Style.RESET_ALL}"
@@ -162,24 +165,22 @@ class Teneo:
             except ValueError:
                 print(f"{Fore.RED + Style.BRIGHT}Invalid input. Enter a number (1, 2 or 3).{Style.RESET_ALL}")
     
-    async def user_login(self, email: str, password: str, proxy=None):
-        url = "https://auth.teneo.pro/api/login"
-        data = json.dumps({"email":email, "password":password})
+    async def user_data(self, token: str, proxy=None):
+        url = "https://auth.teneo.pro/api/user"
         headers = {
             **self.headers,
-            "Content-Length": str(len(data)),
-            "Content-Type": "application/json",
+            "Authorization": f"Bearer {token}",
             "X-Api-Key": self.api_key
         }
         connector = ProxyConnector.from_url(proxy) if proxy else None
         try:
             async with ClientSession(connector=connector, timeout=ClientTimeout(total=120)) as session:
-                async with session.post(url=url, headers=headers, data=data) as response:
+                async with session.get(url=url, headers=headers) as response:
                     response.raise_for_status()
                     result = await response.json()
-                    return result['access_token']
+                    return result['email']
         except (Exception, ClientResponseError) as e:
-            return self.print_message(email, proxy, Fore.RED, f"GET Access Token Failed: {Fore.YELLOW + Style.BRIGHT}{str(e)}")
+            return self.print_message(token, proxy, Fore.RED, f"GET User Data Failed: {Fore.YELLOW + Style.BRIGHT}{str(e)}")
     
     async def campaigns_status(self, email: str, token: str, type: str, proxy=None, retries=5):
         url = f"https://api.teneo.pro/api/campaigns/{type}/status"
@@ -288,7 +289,7 @@ class Teneo:
         connected = False
 
         while True:
-            proxy = self.get_next_proxy_for_account(email) if use_proxy else None
+            proxy = self.get_next_proxy_for_account(token) if use_proxy else None
             connector = ProxyConnector.from_url(proxy) if proxy else None
             session = ClientSession(connector=connector, timeout=ClientTimeout(total=300))
             try:
@@ -370,7 +371,7 @@ class Teneo:
 
     async def process_claim_campaigns_reward(self, email: str, token: str, use_proxy: bool):
         while True:
-            proxy = self.get_next_proxy_for_account(email) if use_proxy else None
+            proxy = self.get_next_proxy_for_account(token) if use_proxy else None
 
             campaigns_type = ["heartbeat", "referral"]
             for type in campaigns_type:
@@ -407,7 +408,7 @@ class Teneo:
 
     async def process_claim_refferal_reward(self, email: str, token: str, use_proxy: bool):
         while True:
-            proxy = self.get_next_proxy_for_account(email) if use_proxy else None
+            proxy = self.get_next_proxy_for_account(token) if use_proxy else None
 
             refferal_lists = await self.user_refferal(email, token, proxy)
             if refferal_lists:
@@ -439,22 +440,22 @@ class Teneo:
 
             await asyncio.sleep(24 * 60 * 60)
             
-    async def get_access_token(self, email: str, password: str, use_proxy: bool):
-        proxy = self.get_next_proxy_for_account(email) if use_proxy else None
-        token = None
-        while token is None:
-            token = await self.user_login(email, password, proxy)
-            if not token:
-                proxy = self.rotate_proxy_for_account(email) if use_proxy else None
+    async def process_get_user_data(self, token: str, use_proxy: bool):
+        proxy = self.get_next_proxy_for_account(token) if use_proxy else None
+        email = None
+        while email is None:
+            email = await self.user_data(token, proxy)
+            if not email:
+                proxy = self.rotate_proxy_for_account(token) if use_proxy else None
                 await asyncio.sleep(5)
                 continue
             
-            self.print_message(email, proxy, Fore.GREEN, "GET Access Token Success")
-            return token
+            self.print_message(email, proxy, Fore.GREEN, "GET User Data Success")
+            return email
         
-    async def process_accounts(self, email: str, password: str, use_proxy: bool):
-        token = await self.get_access_token(email, password, use_proxy)
-        if token:
+    async def process_accounts(self, token: str, use_proxy: bool):
+        email = await self.process_get_user_data(token, use_proxy)
+        if email:
 
             tasks = []
             tasks.append(self.process_claim_campaigns_reward(email, token, use_proxy))
@@ -464,10 +465,8 @@ class Teneo:
         
     async def main(self):
         try:
-            accounts = self.load_accounts()
-            if not accounts:
-                self.log(f"{Fore.RED+Style.BRIGHT}No Accounts Loaded.{Style.RESET_ALL}")
-                return
+            with open('tokens.txt', 'r') as file:
+                tokens = [line.strip() for line in file if line.strip()]
             
             use_proxy_choice = self.print_question()
 
@@ -479,7 +478,7 @@ class Teneo:
             self.welcome()
             self.log(
                 f"{Fore.GREEN + Style.BRIGHT}Account's Total: {Style.RESET_ALL}"
-                f"{Fore.WHITE + Style.BRIGHT}{len(accounts)}{Style.RESET_ALL}"
+                f"{Fore.WHITE + Style.BRIGHT}{len(tokens)}{Style.RESET_ALL}"
             )
 
             if use_proxy:
@@ -489,16 +488,16 @@ class Teneo:
 
             while True:
                 tasks = []
-                for account in accounts:
-                    email = account.get('Email')
-                    password = account.get('Password')
-
-                    if "@" in email and password:
-                        tasks.append(self.process_accounts(email, password, use_proxy))
+                for token in tokens:
+                    if token:
+                        tasks.append(self.process_accounts(token, use_proxy))
 
                 await asyncio.gather(*tasks)
                 await asyncio.sleep(10)
 
+        except FileNotFoundError:
+            self.log(f"{Fore.RED}File 'tokens.txt' Not Found.{Style.RESET_ALL}")
+            return
         except Exception as e:
             self.log(f"{Fore.RED+Style.BRIGHT}Error: {e}{Style.RESET_ALL}")
             raise e
