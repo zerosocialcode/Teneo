@@ -85,6 +85,12 @@ Teneo Community Node BOT
     protocol://user:pass@ip:port
   ```
 
+## Setup
+
+```bash
+python setup.py #or python3 setup.py
+```
+
 ## Run
 
 ```bash

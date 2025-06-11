@@ -1,5 +1,4 @@
 from aiohttp import (
-    ClientResponseError,
     ClientSession,
     ClientTimeout
 )
