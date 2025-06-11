@@ -13,20 +13,24 @@ wib = pytz.timezone('Asia/Jakarta')
 
 class Teneo:
     def __init__(self) -> None:
-        self.headers = {
-            "Accept": "application/json, text/plain, */*",
+        self.WS_HEADERS = {
             "Accept-Language": "en-US,en;q=0.9,id;q=0.8",
-            "Origin": "https://dashboard.teneo.pro",
-            "Referer": "https://dashboard.teneo.pro/",
-            "Sec-Fetch-Dest": "empty",
-            "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "same-site",
+            "Cache-Control": "no-cache",
+            "Connection": "Upgrade",
+            "Host": "secure.ws.teneo.pro",
+            "Origin": "chrome-extension://emcclcoaglgcpoognfiggmhnhgabppkm",
+            "Pragma": "no-cache",
+            "Sec-WebSocket-Extensions": "permessage-deflate; client_max_window_bits",
+            "Sec-WebSocket-Key": "g0PDYtLWQOmaBE5upOBXew==",
+            "Sec-WebSocket-Version": "13",
+            "Upgrade": "websocket",
             "User-Agent": FakeUserAgent().random
         }
-        self.api_key = "OwAG3kib1ivOJG4Y0OCZ8lJETa6ypvsDtGmdhcjB"
+        self.WS_API = "wss://secure.ws.teneo.pro/websocket"
         self.proxies = []
         self.proxy_index = 0
         self.account_proxies = {}
+        self.access_tokens = {}
 
     def clear_terminal(self):
         os.system('cls' if os.name == 'nt' else 'clear')
@@ -54,7 +58,7 @@ class Teneo:
         return f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}"
     
     def load_accounts(self):
-        filename = "accounts.json"
+        filename = "tokens.json"
         try:
             if not os.path.exists(filename):
                 self.log(f"{Fore.RED}File {filename} Not Found.{Style.RESET_ALL}")
@@ -73,18 +77,18 @@ class Teneo:
         try:
             if use_proxy_choice == 1:
                 async with ClientSession(timeout=ClientTimeout(total=30)) as session:
-                    async with session.get("https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/all.txt") as response:
+                    async with session.get("https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&proxy_format=protocolipport&format=text") as response:
                         response.raise_for_status()
                         content = await response.text()
                         with open(filename, 'w') as f:
                             f.write(content)
-                        self.proxies = content.splitlines()
+                        self.proxies = [line.strip() for line in content.splitlines() if line.strip()]
             else:
                 if not os.path.exists(filename):
                     self.log(f"{Fore.RED + Style.BRIGHT}File {filename} Not Found.{Style.RESET_ALL}")
                     return
                 with open(filename, 'r') as f:
-                    self.proxies = f.read().splitlines()
+                    self.proxies = [line.strip() for line in f.read().splitlines() if line.strip()]
             
             if not self.proxies:
                 self.log(f"{Fore.RED + Style.BRIGHT}No Proxies Found.{Style.RESET_ALL}")
@@ -147,164 +151,53 @@ class Teneo:
     def print_question(self):
         while True:
             try:
-                print("1. Run With Monosans Proxy")
-                print("2. Run With Private Proxy")
-                print("3. Run Without Proxy")
-                choose = int(input("Choose [1/2/3] -> ").strip())
+                print(f"{Fore.WHITE + Style.BRIGHT}1. Run With Free Proxyscrape Proxy{Style.RESET_ALL}")
+                print(f"{Fore.WHITE + Style.BRIGHT}2. Run With Private Proxy{Style.RESET_ALL}")
+                print(f"{Fore.WHITE + Style.BRIGHT}3. Run Without Proxy{Style.RESET_ALL}")
+                choose = int(input(f"{Fore.BLUE + Style.BRIGHT}Choose [1/2/3] -> {Style.RESET_ALL}").strip())
 
                 if choose in [1, 2, 3]:
                     proxy_type = (
-                        "Run With Monosans Proxy" if choose == 1 else 
-                        "Run With Private Proxy" if choose == 2 else 
-                        "Run Without Proxy"
+                        "With Free Proxyscrape" if choose == 1 else 
+                        "With Private" if choose == 2 else 
+                        "Without"
                     )
-                    print(f"{Fore.GREEN + Style.BRIGHT}{proxy_type} Selected.{Style.RESET_ALL}")
-                    return choose
+                    print(f"{Fore.GREEN + Style.BRIGHT}Run {proxy_type} Proxy Selected.{Style.RESET_ALL}")
+                    break
                 else:
                     print(f"{Fore.RED + Style.BRIGHT}Please enter either 1, 2 or 3.{Style.RESET_ALL}")
             except ValueError:
                 print(f"{Fore.RED + Style.BRIGHT}Invalid input. Enter a number (1, 2 or 3).{Style.RESET_ALL}")
-    
-    async def user_data(self, token: str, proxy=None):
-        url = "https://auth.teneo.pro/api/user"
-        headers = {
-            **self.headers,
-            "Authorization": f"Bearer {token}",
-            "X-Api-Key": self.api_key
-        }
-        connector = ProxyConnector.from_url(proxy) if proxy else None
-        try:
-            async with ClientSession(connector=connector, timeout=ClientTimeout(total=120)) as session:
-                async with session.get(url=url, headers=headers) as response:
-                    response.raise_for_status()
-                    result = await response.json()
-                    return result['email']
-        except (Exception, ClientResponseError) as e:
-            return self.print_message(token, proxy, Fore.RED, f"GET User Data Failed: {Fore.YELLOW + Style.BRIGHT}{str(e)}")
-    
-    async def campaigns_status(self, email: str, token: str, type: str, proxy=None, retries=5):
-        url = f"https://api.teneo.pro/api/campaigns/{type}/status"
-        headers = {
-            **self.headers,
-            "Authorization": f"Bearer {token}"
-        }
-        await asyncio.sleep(3)
-        for attempt in range(retries):
-            connector = ProxyConnector.from_url(proxy) if proxy else None
-            try:
-                async with ClientSession(connector=connector, timeout=ClientTimeout(total=120)) as session:
-                    async with session.get(url=url, headers=headers) as response:
-                        response.raise_for_status()
-                        return await response.json()
-            except (Exception, ClientResponseError) as e:
-                if attempt < retries - 1:
-                    await asyncio.sleep(5)
-                    continue
 
-                return self.print_message(email, proxy, Fore.RED, f"GET {type} Campaigns Data Failed: {Fore.YELLOW + Style.BRIGHT}{str(e)}")
-    
-    async def claim_campaigns(self, email: str, token: str, type: str, title: str, campaign_id: str, proxy=None, retries=5):
-        url = f"https://api.teneo.pro/api/campaigns/{campaign_id}/claim"
-        headers = {
-            **self.headers,
-            "Authorization": f"Bearer {token}",
-            "Content-Length": "0"
-        }
-        await asyncio.sleep(3)
-        for attempt in range(retries):
-            connector = ProxyConnector.from_url(proxy) if proxy else None
-            try:
-                async with ClientSession(connector=connector, timeout=ClientTimeout(total=120)) as session:
-                    async with session.post(url=url, headers=headers) as response:
-                        response.raise_for_status()
-                        return await response.json()
-            except (Exception, ClientResponseError) as e:
-                if attempt < retries - 1:
-                    await asyncio.sleep(5)
-                    continue
+        rotate = False
+        if choose in [1, 2]:
+            while True:
+                rotate = input(f"{Fore.BLUE + Style.BRIGHT}Rotate Invalid Proxy? [y/n] -> {Style.RESET_ALL}").strip()
 
-                return self.print_message(email, proxy, Fore.RED, f"Claim {title} {type} Campaigns Reward Failed: {Fore.YELLOW + Style.BRIGHT}{str(e)}")
-    
-    async def user_refferal(self, email: str, token: str, proxy=None, retries=5):
-        url = "https://api.teneo.pro/api/users/referrals"
-        headers = {
-            **self.headers,
-            "Authorization": f"Bearer {token}"
-        }
-        await asyncio.sleep(3)
-        for attempt in range(retries):
-            connector = ProxyConnector.from_url(proxy) if proxy else None
-            try:
-                async with ClientSession(connector=connector, timeout=ClientTimeout(total=120)) as session:
-                    async with session.get(url=url, headers=headers) as response:
-                        response.raise_for_status()
-                        return await response.json()
-            except (Exception, ClientResponseError) as e:
-                if attempt < retries - 1:
-                    await asyncio.sleep(5)
-                    continue
+                if rotate in ["y", "n"]:
+                    rotate = rotate == "y"
+                    break
+                else:
+                    print(f"{Fore.RED + Style.BRIGHT}Invalid input. Enter 'y' or 'n'.{Style.RESET_ALL}")
 
-                return self.print_message(email, proxy, Fore.RED, f"GET Refferal Data Failed: {Fore.YELLOW + Style.BRIGHT}{str(e)}")
+        return choose, rotate
     
-    async def claim_refferal(self, email: str, token: str, refferal_email: str, referral_id: str, proxy=None, retries=5):
-        url = "https://api.teneo.pro/api/users/referrals/claim"
-        data = json.dumps({"referralId":referral_id})
-        headers = {
-            **self.headers,
-            "Authorization": f"Bearer {token}",
-            "Content-Length": str(len(data)),
-            "Content-Type": "application/json"
-        }
-        await asyncio.sleep(3)
-        for attempt in range(retries):
-            connector = ProxyConnector.from_url(proxy) if proxy else None
-            try:
-                async with ClientSession(connector=connector, timeout=ClientTimeout(total=120)) as session:
-                    async with session.post(url=url, headers=headers, data=data) as response:
-                        response.raise_for_status()
-                        return await response.json()
-            except (Exception, ClientResponseError) as e:
-                if attempt < retries - 1:
-                    await asyncio.sleep(5)
-                    continue
-
-                return self.print_message(email, proxy, Fore.RED, f"Claim Refferal {refferal_email} Reward Failed: {Fore.YELLOW + Style.BRIGHT}{str(e)}")
-        
-    async def connect_websocket(self, email: str, token: str, use_proxy: bool):
-        wss_url = f"wss://secure.ws.teneo.pro/websocket?accessToken={token}&version=v0.2"
-        headers = {
-            "Accept-Language": "en-US,en;q=0.9,id;q=0.8",
-            "Cache-Control": "no-cache",
-            "Connection": "Upgrade",
-            "Host": "secure.ws.teneo.pro",
-            "Origin": "chrome-extension://emcclcoaglgcpoognfiggmhnhgabppkm",
-            "Pragma": "no-cache",
-            "Sec-WebSocket-Extensions": "permessage-deflate; client_max_window_bits",
-            "Sec-WebSocket-Key": "g0PDYtLWQOmaBE5upOBXew==",
-            "Sec-WebSocket-Version": "13",
-            "Upgrade": "websocket",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36"
-        }
+    async def connect_websocket(self, email: str, use_proxy: bool, rotate_proxy: bool):
+        wss_url = f"{self.WS_API}?accessToken={self.access_tokens[email]}&version=v0.2"
         connected = False
 
         while True:
-            proxy = self.get_next_proxy_for_account(token) if use_proxy else None
+            proxy = self.get_next_proxy_for_account(email) if use_proxy else None
             connector = ProxyConnector.from_url(proxy) if proxy else None
             session = ClientSession(connector=connector, timeout=ClientTimeout(total=300))
             try:
-                async with session.ws_connect(wss_url, headers=headers) as wss:
+                async with session.ws_connect(wss_url, headers=self.WS_HEADERS) as wss:
                     
                     async def send_heartbeat_message():
                         while True:
                             await asyncio.sleep(10)
                             await wss.send_json({"type":"PING"})
-                            print(
-                                f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
-                                f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-                                f"{Fore.BLUE + Style.BRIGHT}Node Connection Estabilished...{Style.RESET_ALL}",
-                                end="\r",
-                                flush=True
-                            )
+                            self.print_message(email, proxy, Fore.BLUE, "PING Sent")
 
                     if not connected:
                         self.print_message(email, proxy, Fore.GREEN, "Websocket Is Connected")
@@ -317,9 +210,8 @@ class Teneo:
                             if response.get("message") == "Connected successfully":
                                 today_point = response.get("pointsToday", 0)
                                 total_point = response.get("pointsTotal", 0)
-                                self.print_message(
-                                    email, proxy, Fore.GREEN, 
-                                    f"Connected Successfully "
+
+                                self.print_message(email, proxy, Fore.GREEN, "Connected Successfully "
                                     f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
                                     f"{Fore.CYAN + Style.BRIGHT} Earning: {Style.RESET_ALL}"
                                     f"{Fore.WHITE + Style.BRIGHT}Today {today_point} PTS{Style.RESET_ALL}"
@@ -331,9 +223,8 @@ class Teneo:
                                 today_point = response.get("pointsToday", 0)
                                 total_point = response.get("pointsTotal", 0)
                                 heartbeat_today = response.get("heartbeats", 0)
-                                self.print_message(
-                                    email, proxy, Fore.GREEN, 
-                                    f"Pulse From Server"
+
+                                self.print_message(email, proxy, Fore.GREEN, "Pulse From Server"
                                     f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
                                     f"{Fore.CYAN + Style.BRIGHT}Earning:{Style.RESET_ALL}"
                                     f"{Fore.WHITE + Style.BRIGHT} Today {today_point} PTS {Style.RESET_ALL}"
@@ -351,7 +242,7 @@ class Teneo:
                                 try:
                                     await send_ping
                                 except asyncio.CancelledError:
-                                    self.print_message(email, proxy, Fore.YELLOW, f"Send Heartbeat Cancelled")
+                                    self.print_message(email, proxy, Fore.YELLOW, f"PING Cancelled")
 
                             await asyncio.sleep(5)
                             connected = False
@@ -359,7 +250,8 @@ class Teneo:
 
             except Exception as e:
                 self.print_message(email, proxy, Fore.RED, f"Websocket Not Connected: {Fore.YELLOW + Style.BRIGHT}{str(e)}")
-                self.rotate_proxy_for_account(email) if use_proxy else None
+                if rotate_proxy:
+                    self.rotate_proxy_for_account(email) if use_proxy else None
                 await asyncio.sleep(5)
 
             except asyncio.CancelledError:
@@ -368,109 +260,14 @@ class Teneo:
             finally:
                 await session.close()
 
-    async def process_claim_campaigns_reward(self, email: str, token: str, use_proxy: bool):
-        while True:
-            proxy = self.get_next_proxy_for_account(token) if use_proxy else None
-
-            campaigns_type = ["heartbeat", "referral"]
-            for type in campaigns_type:
-                campaigns = await self.campaigns_status(email, token, type, proxy)
-
-                if campaigns:
-                    completed = False
-                    
-                    for campaign in campaigns:
-                        if campaign:
-                            campaign_id = campaign["id"]
-                            title = campaign["title"]
-                            reward = campaign["points_reward"]
-                            status = campaign["status"]
-
-                            if status == "claimable":
-                                claim = await self.claim_campaigns(email, token, type, title, campaign_id, proxy)
-                                if claim and claim.get("message") == "Reward claimed":
-                                    self.print_message(email, proxy, Fore.WHITE, 
-                                        f"Campaign {type} {title}"
-                                        f"{Fore.GREEN+Style.BRIGHT} Is Claimed {Style.RESET_ALL}"
-                                        f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
-                                        f"{Fore.CYAN+Style.BRIGHT} Reward: {Style.RESET_ALL}"
-                                        f"{Fore.WHITE+Style.BRIGHT}{reward} PTS{Style.RESET_ALL}"
-                                    )
-
-                        else:
-                            completed = True
-
-                    if completed:
-                        self.print_message(email, proxy, Fore.GREEN, f"All Available {type} Campaigns Reward Is Claimed")
-
-            await asyncio.sleep(24 * 60 * 60)
-
-    async def process_claim_refferal_reward(self, email: str, token: str, use_proxy: bool):
-        while True:
-            proxy = self.get_next_proxy_for_account(token) if use_proxy else None
-
-            refferal_lists = await self.user_refferal(email, token, proxy)
-            if refferal_lists:
-                completed = False
-
-                unfiltered_refferals = refferal_lists.get("unfiltered", {}).get("refferals", [])
-                filtered_refferals = refferal_lists.get("filtered", {}).get("refferals", [])
-                
-                for refferal in [unfiltered_refferals, filtered_refferals]:
-                    if refferal:
-                        refferal_id = refferal["id"]
-                        refferal_email = refferal["inviteeEmail"]
-                        reward = refferal["invitedPoints"]
-                        can_claim = refferal["canClaim"]
-
-                        if can_claim:
-                            claim = await self.claim_refferal(email, token, refferal_email, refferal_id, proxy)
-                            if claim and claim.get("message") == "Referral point claimed successfully":
-                                self.print_message(email, proxy, Fore.WHITE, 
-                                    f"Refferal {refferal_email}"
-                                    f"{Fore.GREEN+Style.BRIGHT} Is Claimed {Style.RESET_ALL}"
-                                    f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
-                                    f"{Fore.CYAN+Style.BRIGHT} Reward: {Style.RESET_ALL}"
-                                    f"{Fore.WHITE+Style.BRIGHT}{reward} PTS{Style.RESET_ALL}"
-                                )
-
-                    else:
-                        completed = True
-
-                if completed:
-                    self.print_message(email, proxy, Fore.GREEN, f"All Available Refferal Reward Is Claimed")
-
-            await asyncio.sleep(24 * 60 * 60)
-            
-    async def process_get_user_data(self, token: str, use_proxy: bool):
-        proxy = self.get_next_proxy_for_account(token) if use_proxy else None
-        email = None
-        while email is None:
-            email = await self.user_data(token, proxy)
-            if not email:
-                proxy = self.rotate_proxy_for_account(token) if use_proxy else None
-                await asyncio.sleep(5)
-                continue
-            
-            self.print_message(email, proxy, Fore.GREEN, "GET User Data Success")
-            return email
-        
-    async def process_accounts(self, token: str, use_proxy: bool):
-        email = await self.process_get_user_data(token, use_proxy)
-        if email:
-
-            tasks = []
-            tasks.append(asyncio.create_task(self.process_claim_campaigns_reward(email, token, use_proxy)))
-            tasks.append(asyncio.create_task(self.process_claim_refferal_reward(email, token, use_proxy)))
-            tasks.append(asyncio.create_task(self.connect_websocket(email, token, use_proxy)))
-            await asyncio.gather(*tasks)
-        
     async def main(self):
         try:
-            with open('tokens.txt', 'r') as file:
-                tokens = [line.strip() for line in file if line.strip()]
+            tokens = self.load_accounts()
+            if not tokens:
+                self.log(f"{Fore.RED + Style.BRIGHT}No Accounts Loaded.{Style.RESET_ALL}")
+                return
             
-            use_proxy_choice = self.print_question()
+            use_proxy_choice, rotate_proxy = self.print_question()
 
             use_proxy = False
             if use_proxy_choice in [1, 2]:
@@ -486,20 +283,31 @@ class Teneo:
             if use_proxy:
                 await self.load_proxies(use_proxy_choice)
 
-            self.log(f"{Fore.CYAN + Style.BRIGHT}-{Style.RESET_ALL}"*75)
+            self.log(f"{Fore.CYAN + Style.BRIGHT}={Style.RESET_ALL}"*75)
 
-            while True:
-                tasks = []
-                for token in tokens:
-                    if token:
-                        tasks.append(asyncio.create_task(self.process_accounts(token, use_proxy)))
+            tasks = []
+            for idx, token in enumerate(tokens, start=1):
+                if token:
+                    email = token["Email"]
+                    access_token = token["accessToken"]
 
-                await asyncio.gather(*tasks)
-                await asyncio.sleep(10)
+                    if not "@" in email or not access_token:
+                        self.log(
+                            f"{Fore.CYAN + Style.BRIGHT}[ Account: {Style.RESET_ALL}"
+                            f"{Fore.WHITE + Style.BRIGHT}{idx}{Style.RESET_ALL}"
+                            f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
+                            f"{Fore.CYAN + Style.BRIGHT}Status:{Style.RESET_ALL}"
+                            f"{Fore.RED + Style.BRIGHT} Invalid Account Data {Style.RESET_ALL}"
+                            f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
+                        )
+                        continue
 
-        except FileNotFoundError:
-            self.log(f"{Fore.RED}File 'tokens.txt' Not Found.{Style.RESET_ALL}")
-            return
+                    self.access_tokens[email] = access_token
+
+                    tasks.append(asyncio.create_task(self.connect_websocket(email, use_proxy, rotate_proxy)))
+
+            await asyncio.gather(*tasks)
+
         except Exception as e:
             self.log(f"{Fore.RED+Style.BRIGHT}Error: {e}{Style.RESET_ALL}")
             raise e
