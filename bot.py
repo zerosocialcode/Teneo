@@ -1,17 +1,74 @@
-from aiohttp import (
-    ClientSession,
-    ClientTimeout
-)
+# =============================================================================
+# Teneo-BOT Dashboard
+# Original Author: vonssy
+# Developed & modernized by: zerosocialcode
+# =============================================================================
+
+import asyncio
+import json
+import os
+from typing import Any, Dict, List, Optional, Tuple
+
+import pytz
+from aiohttp import ClientSession, ClientTimeout
 from aiohttp_socks import ProxyConnector
 from fake_useragent import FakeUserAgent
 from datetime import datetime
-from colorama import *
-import asyncio, json, os, pytz
+from colorama import Fore, Style, init
 
-wib = pytz.timezone('Asia/Jakarta')
+# ----------- CONFIGURABLE CONSTANTS -----------
+BOX_WIDTH = 64
+TIMEZONE = 'Asia/Jakarta'
 
-class Teneo:
+# ----------- COLOR AND STYLE KIT --------------
+init(autoreset=True)
+wib = pytz.timezone(TIMEZONE)
+
+class StyleKit:
+    TEAL = Fore.CYAN
+    PURPLE = Fore.MAGENTA
+    ORANGE = Fore.YELLOW
+    WHITE = Fore.WHITE
+    GRAY = Fore.LIGHTBLACK_EX
+    RED = Fore.LIGHTRED_EX
+    GREEN = Fore.LIGHTGREEN_EX
+    RESET = Style.RESET_ALL
+    BOLD = Style.BRIGHT
+
+    HEADER = TEAL + BOLD
+    SUBHEADER = PURPLE + BOLD
+    INFO = ORANGE + BOLD
+    OK = GREEN + BOLD
+    WARN = ORANGE + BOLD
+    ERR = RED + BOLD
+
+    @staticmethod
+    def box_line(char="═"):
+        return f"╔{char * (BOX_WIDTH-2)}╗"
+
+    @staticmethod
+    def box_sep():
+        return f"╟{'─' * (BOX_WIDTH-2)}╢"
+
+    @staticmethod
+    def box_bottom():
+        return f"╚{'═' * (BOX_WIDTH-2)}╝"
+
+    @staticmethod
+    def box_text(text, color=Fore.WHITE):
+        return f"║{color}{text.center(BOX_WIDTH-2)}{Style.RESET_ALL}║"
+
+    @staticmethod
+    def log_line(status, email, proxy, message, color=Fore.GREEN):
+        return (
+            f"[{color}{status:<4}{Style.RESET_ALL}] "
+            f"{email:<20} | Proxy={proxy:<14} | {message}"
+        )
+
+# ------------- MAIN BOT CLASS -----------------
+class TeneoBot:
     def __init__(self) -> None:
+        ua = FakeUserAgent()
         self.WS_HEADERS = {
             "Accept-Language": "en-US,en;q=0.9,id;q=0.8",
             "Cache-Control": "no-cache",
@@ -23,301 +80,258 @@ class Teneo:
             "Sec-WebSocket-Key": "g0PDYtLWQOmaBE5upOBXew==",
             "Sec-WebSocket-Version": "13",
             "Upgrade": "websocket",
-            "User-Agent": FakeUserAgent().random
+            "User-Agent": ua.random
         }
         self.WS_API = "wss://secure.ws.teneo.pro/websocket"
-        self.proxies = []
-        self.proxy_index = 0
-        self.account_proxies = {}
-        self.access_tokens = {}
+        self.proxies: List[str] = []
+        self.proxy_index: int = 0
+        self.account_proxies: Dict[str, str] = {}
+        self.access_tokens: Dict[str, str] = {}
 
-    def clear_terminal(self):
+    @staticmethod
+    def clear_terminal() -> None:
         os.system('cls' if os.name == 'nt' else 'clear')
 
-    def log(self, message):
+    @staticmethod
+    def log(message: str, color: str = StyleKit.INFO) -> None:
+        timestamp = datetime.now().astimezone(wib).strftime('%Y-%m-%d %H:%M:%S')
         print(
-            f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
-            f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}{message}",
-            flush=True
+            f"{StyleKit.GRAY}[{timestamp}]{StyleKit.RESET} {color}{message}{StyleKit.RESET}"
         )
 
-    def welcome(self):
-        print(
-            f"""
-        {Fore.GREEN + Style.BRIGHT}Auto Ping {Fore.BLUE + Style.BRIGHT}Teneo - BOT
-            """
-            f"""
-        {Fore.GREEN + Style.BRIGHT}Rey? {Fore.YELLOW + Style.BRIGHT}<INI WATERMARK>
-            """
-        )
+    @staticmethod
+    def section(title: str) -> None:
+        print(StyleKit.box_sep())
+        print(StyleKit.box_text(title, StyleKit.SUBHEADER))
 
-    def format_seconds(self, seconds):
+    @staticmethod
+    def welcome() -> None:
+        print(StyleKit.box_line())
+        print(StyleKit.box_text("🟧  Teneo-BOT Dashboard  🟧", StyleKit.HEADER))
+        print(StyleKit.box_text("Original Author: vonssy", StyleKit.SUBHEADER))
+        print(StyleKit.box_text("Developed by: zerosocialcode", StyleKit.PURPLE))
+        print(StyleKit.box_sep())
+        print(StyleKit.box_text("Secure, Modern, and Robust!", StyleKit.ORANGE))
+        print(StyleKit.box_bottom())
+
+    @staticmethod
+    def format_seconds(seconds: int) -> str:
         hours, remainder = divmod(seconds, 3600)
         minutes, seconds = divmod(remainder, 60)
         return f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}"
-    
-    def load_accounts(self):
-        filename = "tokens.json"
-        try:
-            if not os.path.exists(filename):
-                self.log(f"{Fore.RED}File {filename} Not Found.{Style.RESET_ALL}")
-                return
 
-            with open(filename, 'r') as file:
-                data = json.load(file)
-                if isinstance(data, list):
-                    return data
-                return []
-        except json.JSONDecodeError:
+    @staticmethod
+    def mask_account(account: str) -> str:
+        if "@" in account:
+            local, domain = account.split('@', 1)
+            masked = local[:3] + "***" + local[-3:]
+            return f"{masked}@{domain}"
+        return f"{account[:3]}***{account[-3:]}"
+
+    def load_accounts(self, filename: str = "tokens.json") -> List[Dict[str, str]]:
+        if not os.path.exists(filename):
+            self.log(f"File {filename} Not Found.", StyleKit.ERR)
             return []
-    
-    async def load_proxies(self, use_proxy_choice: int):
-        filename = "proxy.txt"
+        try:
+            with open(filename, "r") as file:
+                data = json.load(file)
+            if isinstance(data, list):
+                return data
+            self.log("Invalid tokens.json format. Should be a list of dicts.", StyleKit.ERR)
+        except (json.JSONDecodeError, IOError) as e:
+            self.log(f"Failed to load tokens.json: {e}", StyleKit.ERR)
+        return []
+
+    async def load_proxies(self, use_proxy_choice: int, filename: str = "proxy.txt") -> None:
+        self.proxies = []
         try:
             if use_proxy_choice == 1:
                 async with ClientSession(timeout=ClientTimeout(total=30)) as session:
-                    async with session.get("https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&proxy_format=protocolipport&format=text") as response:
-                        response.raise_for_status()
+                    async with session.get(
+                        "https://api.proxyscrape.com/v4/free-proxy-list/get?request=display_proxies&proxy_format=protocolipport&format=text"
+                    ) as response:
                         content = await response.text()
-                        with open(filename, 'w') as f:
-                            f.write(content)
-                        self.proxies = [line.strip() for line in content.splitlines() if line.strip()]
+                with open(filename, "w") as f:
+                    f.write(content)
+                self.proxies = [line.strip() for line in content.splitlines() if line.strip()]
             else:
                 if not os.path.exists(filename):
-                    self.log(f"{Fore.RED + Style.BRIGHT}File {filename} Not Found.{Style.RESET_ALL}")
+                    self.log(f"File {filename} Not Found.", StyleKit.ERR)
                     return
-                with open(filename, 'r') as f:
+                with open(filename, "r") as f:
                     self.proxies = [line.strip() for line in f.read().splitlines() if line.strip()]
-            
-            if not self.proxies:
-                self.log(f"{Fore.RED + Style.BRIGHT}No Proxies Found.{Style.RESET_ALL}")
-                return
 
-            self.log(
-                f"{Fore.GREEN + Style.BRIGHT}Proxies Total  : {Style.RESET_ALL}"
-                f"{Fore.WHITE + Style.BRIGHT}{len(self.proxies)}{Style.RESET_ALL}"
-            )
-        
+            if not self.proxies:
+                self.log("No Proxies Found.", StyleKit.WARN)
+            else:
+                self.log(f"Loaded {len(self.proxies)} proxies.", StyleKit.OK)
         except Exception as e:
-            self.log(f"{Fore.RED + Style.BRIGHT}Failed To Load Proxies: {e}{Style.RESET_ALL}")
-            self.proxies = []
+            self.log(f"Failed To Load Proxies: {e}", StyleKit.ERR)
 
-    def check_proxy_schemes(self, proxies):
+    @staticmethod
+    def check_proxy_schemes(proxy: str) -> str:
         schemes = ["http://", "https://", "socks4://", "socks5://"]
-        if any(proxies.startswith(scheme) for scheme in schemes):
-            return proxies
-        return f"http://{proxies}"
+        if any(proxy.startswith(scheme) for scheme in schemes):
+            return proxy
+        return f"http://{proxy}"
 
-    def get_next_proxy_for_account(self, email):
+    def get_next_proxy_for_account(self, email: str) -> Optional[str]:
+        if not self.proxies:
+            return None
         if email not in self.account_proxies:
-            if not self.proxies:
-                return None
             proxy = self.check_proxy_schemes(self.proxies[self.proxy_index])
             self.account_proxies[email] = proxy
             self.proxy_index = (self.proxy_index + 1) % len(self.proxies)
         return self.account_proxies[email]
 
-    def rotate_proxy_for_account(self, email):
+    def rotate_proxy_for_account(self, email: str) -> Optional[str]:
         if not self.proxies:
             return None
         proxy = self.check_proxy_schemes(self.proxies[self.proxy_index])
         self.account_proxies[email] = proxy
         self.proxy_index = (self.proxy_index + 1) % len(self.proxies)
         return proxy
-    
-    def mask_account(self, account):
-        if "@" in account:
-            local, domain = account.split('@', 1)
-            mask_account = local[:3] + '*' * 3 + local[-3:]
-            return f"{mask_account}@{domain}"
-        
-        mask_account = account[:3] + '*' * 3 + account[-3:]
-        return mask_account
 
-    def print_message(self, account, proxy, color, message):
-        self.log(
-            f"{Fore.CYAN + Style.BRIGHT}[ Account:{Style.RESET_ALL}"
-            f"{Fore.WHITE + Style.BRIGHT} {self.mask_account(account)} {Style.RESET_ALL}"
-            f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-            f"{Fore.CYAN + Style.BRIGHT} Proxy: {Style.RESET_ALL}"
-            f"{Fore.WHITE + Style.BRIGHT}{proxy}{Style.RESET_ALL}"
-            f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
-            f"{Fore.CYAN + Style.BRIGHT}Status:{Style.RESET_ALL}"
-            f"{color + Style.BRIGHT} {message} {Style.RESET_ALL}"
-            f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
-        )
+    def print_message(self, account: str, proxy: Optional[str], status: str, message: str) -> None:
+        masked_email = self.mask_account(account)
+        proxy_disp = proxy or "No Proxy"
+        color = {
+            "ok": StyleKit.OK,
+            "warn": StyleKit.WARN,
+            "err": StyleKit.ERR,
+            "info": StyleKit.INFO,
+        }.get(status, StyleKit.INFO)
+        print(StyleKit.log_line(status.upper(), masked_email, proxy_disp, message, color))
 
-    def print_question(self):
+    def print_question(self) -> Tuple[int, bool]:
+        print(StyleKit.box_line())
+        print(StyleKit.box_text("Proxy Usage:", StyleKit.ORANGE))
+        print(StyleKit.box_text("1. Use Free Proxyscrape Proxy", StyleKit.WHITE))
+        print(StyleKit.box_text("2. Use Private Proxy", StyleKit.WHITE))
+        print(StyleKit.box_text("3. Run Without Proxy", StyleKit.WHITE))
+        print(StyleKit.box_bottom())
         while True:
             try:
-                print(f"{Fore.WHITE + Style.BRIGHT}1. Run With Free Proxyscrape Proxy{Style.RESET_ALL}")
-                print(f"{Fore.WHITE + Style.BRIGHT}2. Run With Private Proxy{Style.RESET_ALL}")
-                print(f"{Fore.WHITE + Style.BRIGHT}3. Run Without Proxy{Style.RESET_ALL}")
-                choose = int(input(f"{Fore.BLUE + Style.BRIGHT}Choose [1/2/3] -> {Style.RESET_ALL}").strip())
-
+                choose = int(input(f"{StyleKit.ORANGE}Select [1/2/3]: {StyleKit.RESET}").strip())
                 if choose in [1, 2, 3]:
-                    proxy_type = (
-                        "With Free Proxyscrape" if choose == 1 else 
-                        "With Private" if choose == 2 else 
-                        "Without"
-                    )
-                    print(f"{Fore.GREEN + Style.BRIGHT}Run {proxy_type} Proxy Selected.{Style.RESET_ALL}")
                     break
-                else:
-                    print(f"{Fore.RED + Style.BRIGHT}Please enter either 1, 2 or 3.{Style.RESET_ALL}")
+                print(f"{StyleKit.ERR}Please enter either 1, 2 or 3.{StyleKit.RESET}")
             except ValueError:
-                print(f"{Fore.RED + Style.BRIGHT}Invalid input. Enter a number (1, 2 or 3).{Style.RESET_ALL}")
+                print(f"{StyleKit.ERR}Invalid input. Enter 1, 2 or 3.{StyleKit.RESET}")
 
         rotate = False
         if choose in [1, 2]:
             while True:
-                rotate = input(f"{Fore.BLUE + Style.BRIGHT}Rotate Invalid Proxy? [y/n] -> {Style.RESET_ALL}").strip()
-
-                if rotate in ["y", "n"]:
-                    rotate = rotate == "y"
+                rot = input(f"{StyleKit.ORANGE}Rotate Proxy on Fail? [y/n]: {StyleKit.RESET}").strip().lower()
+                if rot in ["y", "n"]:
+                    rotate = rot == "y"
                     break
-                else:
-                    print(f"{Fore.RED + Style.BRIGHT}Invalid input. Enter 'y' or 'n'.{Style.RESET_ALL}")
-
+                print(f"{StyleKit.ERR}Invalid input. Enter 'y' or 'n'.{StyleKit.RESET}")
         return choose, rotate
-    
-    async def connect_websocket(self, email: str, use_proxy: bool, rotate_proxy: bool):
+
+    async def connect_websocket(self, email: str, use_proxy: bool, rotate_proxy: bool) -> None:
         wss_url = f"{self.WS_API}?accessToken={self.access_tokens[email]}&version=v0.2"
         connected = False
-
         while True:
             proxy = self.get_next_proxy_for_account(email) if use_proxy else None
             connector = ProxyConnector.from_url(proxy) if proxy else None
-            session = ClientSession(connector=connector, timeout=ClientTimeout(total=300))
-            try:
-                async with session.ws_connect(wss_url, headers=self.WS_HEADERS) as wss:
-                    
-                    async def send_heartbeat_message():
-                        while True:
-                            await asyncio.sleep(10)
-                            await wss.send_json({"type":"PING"})
-                            self.print_message(email, proxy, Fore.BLUE, "PING Sent")
+            async with ClientSession(connector=connector, timeout=ClientTimeout(total=300)) as session:
+                try:
+                    async with session.ws_connect(wss_url, headers=self.WS_HEADERS) as wss:
+                        async def send_heartbeat_message():
+                            while True:
+                                await asyncio.sleep(10)
+                                await wss.send_json({"type": "PING"})
+                                self.print_message(email, proxy, "info", "PING Sent")
 
-                    if not connected:
-                        self.print_message(email, proxy, Fore.GREEN, "Websocket Is Connected")
-                        connected = True
-                        send_ping = asyncio.create_task(send_heartbeat_message())
+                        if not connected:
+                            self.print_message(email, proxy, "ok", "Websocket Connected")
+                            connected = True
+                            send_ping = asyncio.create_task(send_heartbeat_message())
 
-                    while connected:
-                        try:
-                            response = await wss.receive_json()
-                            if response.get("message") == "Connected successfully":
+                        while connected:
+                            try:
+                                response = await wss.receive_json()
+                                msg = response.get("message", "")
                                 today_point = response.get("pointsToday", 0)
                                 total_point = response.get("pointsTotal", 0)
-
-                                self.print_message(email, proxy, Fore.GREEN, "Connected Successfully "
-                                    f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                                    f"{Fore.CYAN + Style.BRIGHT} Earning: {Style.RESET_ALL}"
-                                    f"{Fore.WHITE + Style.BRIGHT}Today {today_point} PTS{Style.RESET_ALL}"
-                                    f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
-                                    f"{Fore.WHITE + Style.BRIGHT}Total {total_point} PTS{Style.RESET_ALL}"
+                                if msg == "Connected successfully":
+                                    self.print_message(
+                                        email, proxy, "ok",
+                                        f"Connected | Today: {today_point} PTS | Total: {total_point} PTS"
+                                    )
+                                elif msg == "Pulse from server":
+                                    heartbeat_today = response.get("heartbeats", 0)
+                                    self.print_message(
+                                        email, proxy, "info",
+                                        f"Pulse | Today: {today_point} PTS | Heartbeats: {heartbeat_today}"
+                                    )
+                            except Exception as e:
+                                self.print_message(
+                                    email, proxy, "warn",
+                                    f"Websocket Closed: {e}"
                                 )
-
-                            elif response.get("message") == "Pulse from server":
-                                today_point = response.get("pointsToday", 0)
-                                total_point = response.get("pointsTotal", 0)
-                                heartbeat_today = response.get("heartbeats", 0)
-
-                                self.print_message(email, proxy, Fore.GREEN, "Pulse From Server"
-                                    f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
-                                    f"{Fore.CYAN + Style.BRIGHT}Earning:{Style.RESET_ALL}"
-                                    f"{Fore.WHITE + Style.BRIGHT} Today {today_point} PTS {Style.RESET_ALL}"
-                                    f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                                    f"{Fore.WHITE + Style.BRIGHT} Total {total_point} PTS {Style.RESET_ALL}"
-                                    f"{Fore.MAGENTA + Style.BRIGHT}-{Style.RESET_ALL}"
-                                    f"{Fore.CYAN + Style.BRIGHT} Heartbeat: {Style.RESET_ALL}"
-                                    f"{Fore.WHITE + Style.BRIGHT}Today {heartbeat_today} HB{Style.RESET_ALL}"
-                                )
-
-                        except Exception as e:
-                            self.print_message(email, proxy, Fore.YELLOW, f"Websocket Connection Closed: {Fore.RED + Style.BRIGHT}{str(e)}")
-                            if send_ping:
                                 send_ping.cancel()
                                 try:
                                     await send_ping
                                 except asyncio.CancelledError:
-                                    self.print_message(email, proxy, Fore.YELLOW, f"PING Cancelled")
+                                    self.print_message(email, proxy, "warn", "PING Cancelled")
+                                await asyncio.sleep(5)
+                                connected = False
+                                break
 
-                            await asyncio.sleep(5)
-                            connected = False
-                            break
+                except Exception as e:
+                    self.print_message(
+                        email, proxy, "err",
+                        f"Websocket Not Connected: {e}"
+                    )
+                    if rotate_proxy and use_proxy:
+                        self.rotate_proxy_for_account(email)
+                    await asyncio.sleep(5)
+                except asyncio.CancelledError:
+                    self.print_message(email, proxy, "warn", "Websocket Closed")
+                    break
 
-            except Exception as e:
-                self.print_message(email, proxy, Fore.RED, f"Websocket Not Connected: {Fore.YELLOW + Style.BRIGHT}{str(e)}")
-                if rotate_proxy:
-                    self.rotate_proxy_for_account(email) if use_proxy else None
-                await asyncio.sleep(5)
-
-            except asyncio.CancelledError:
-                self.print_message(email, proxy, Fore.YELLOW, "Websocket Closed")
-                break
-            finally:
-                await session.close()
-
-    async def main(self):
+    async def main(self) -> None:
         try:
-            tokens = self.load_accounts()
-            if not tokens:
-                self.log(f"{Fore.RED + Style.BRIGHT}No Accounts Loaded.{Style.RESET_ALL}")
-                return
-            
-            use_proxy_choice, rotate_proxy = self.print_question()
-
-            use_proxy = False
-            if use_proxy_choice in [1, 2]:
-                use_proxy = True
-
             self.clear_terminal()
             self.welcome()
-            self.log(
-                f"{Fore.GREEN + Style.BRIGHT}Account's Total: {Style.RESET_ALL}"
-                f"{Fore.WHITE + Style.BRIGHT}{len(tokens)}{Style.RESET_ALL}"
-            )
+            tokens = self.load_accounts()
+            if not tokens:
+                self.log("No Accounts Loaded.", StyleKit.ERR)
+                return
+
+            use_proxy_choice, rotate_proxy = self.print_question()
+            use_proxy = use_proxy_choice in [1, 2]
 
             if use_proxy:
                 await self.load_proxies(use_proxy_choice)
 
-            self.log(f"{Fore.CYAN + Style.BRIGHT}={Style.RESET_ALL}"*75)
+            print(StyleKit.box_line())
+            print(StyleKit.box_text("Accounts Loaded", StyleKit.HEADER))
+            self.log(f"Loaded {len(tokens)} account(s).", StyleKit.OK)
+            print(StyleKit.box_bottom())
 
             tasks = []
             for idx, token in enumerate(tokens, start=1):
-                if token:
-                    email = token["Email"]
-                    access_token = token["accessToken"]
-
-                    if not "@" in email or not access_token:
-                        self.log(
-                            f"{Fore.CYAN + Style.BRIGHT}[ Account: {Style.RESET_ALL}"
-                            f"{Fore.WHITE + Style.BRIGHT}{idx}{Style.RESET_ALL}"
-                            f"{Fore.MAGENTA + Style.BRIGHT} - {Style.RESET_ALL}"
-                            f"{Fore.CYAN + Style.BRIGHT}Status:{Style.RESET_ALL}"
-                            f"{Fore.RED + Style.BRIGHT} Invalid Account Data {Style.RESET_ALL}"
-                            f"{Fore.CYAN + Style.BRIGHT}]{Style.RESET_ALL}"
-                        )
-                        continue
-
-                    self.access_tokens[email] = access_token
-
-                    tasks.append(asyncio.create_task(self.connect_websocket(email, use_proxy, rotate_proxy)))
+                email = token.get("Email")
+                access_token = token.get("accessToken")
+                if not (email and access_token and "@" in email):
+                    self.print_message(str(idx), "N/A", "err", "Invalid Account Data")
+                    continue
+                self.access_tokens[email] = access_token
+                tasks.append(self.connect_websocket(email, use_proxy, rotate_proxy))
 
             await asyncio.gather(*tasks)
-
         except Exception as e:
-            self.log(f"{Fore.RED+Style.BRIGHT}Error: {e}{Style.RESET_ALL}")
-            raise e
+            self.log(f"Error: {e}", StyleKit.ERR)
+            raise
 
+# --------------- SCRIPT ENTRY POINT ---------------
 if __name__ == "__main__":
     try:
-        bot = Teneo()
+        bot = TeneoBot()
         asyncio.run(bot.main())
     except KeyboardInterrupt:
-        print(
-            f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
-            f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-            f"{Fore.RED + Style.BRIGHT}[ EXIT ] Teneo - BOT{Style.RESET_ALL}                                       "                              
-        )
+        timestamp = datetime.now().astimezone(wib).strftime('%Y-%m-%d %H:%M:%S')
+        print(f"{StyleKit.GRAY}[{timestamp}]{StyleKit.RESET} {StyleKit.ERR}[EXIT] Teneo - BOT{StyleKit.RESET}")
